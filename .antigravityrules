@@ -1,0 +1,15 @@
+# ContractGuard AI - Global Agent Directives
+
+## Development Strategy
+- **Top-Down Execution:** Build the complex systems and architectural scaffolding first. Start with the Orchestrator Agent, API routing, and database schemas before writing the logic of the individual specialist agents.
+- **Review-Driven Development:** Always generate an Artifact (implementation plan or task list) for user approval before modifying the codebase or executing terminal commands.
+- **Modular Phasing:** Focus strictly on the current active Phase. Do not attempt to build UI or downstream pipelines until the core backend scaffolding is approved.
+
+## Technology Stack Constraints
+- **Backend:** Python 3.11+, FastAPI.
+- **Database:** PostgreSQL with `pgvector`.
+- **Frontend:** Streamlit.
+- **LLM Integration:** The ContractGuard application MUST route its internal agent tasks to a local `gemma4:e2b` model via the Ollama Python library. Do NOT write code that calls external Gemini or Groq APIs for the application's agents.
+
+## Workspace Context
+- The `EL` directory is the absolute source of truth for all business logic, agent prompts, and schemas.
