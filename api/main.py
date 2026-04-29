@@ -23,6 +23,7 @@ risk_predictor = RiskPredictor()
 explainer_agent = ExplainerAgent()
 escalation_agent = EscalationAgent()
 parser_agent = ParserAgent()
+orchestrator = OrchestratorAgent()
 
 # ── Background Scheduler ────────────────────────────────────────────────
 def daily_background_job():
@@ -107,6 +108,7 @@ async def upload_contract(
     scp_days: int = Form(...),
     project_name: str = Form(...),
     location: str = Form(""),
+    contractor_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Upload a contract PDF and trigger the Parser Agent."""
@@ -132,6 +134,7 @@ async def upload_contract(
             scp_days=scp_days,
             contract_value_inr=contract_value_inr,
             day_number=0,
+            contractor_name=contractor_name,
         )
         db.add(project)
         db.commit()
@@ -147,6 +150,7 @@ async def upload_contract(
             scp_days=scp_days,
             project_name=project_name,
             location=location,
+            contractor_name=contractor_name,
         )
         return {
             "message": "Contract parsed successfully",
@@ -255,6 +259,7 @@ def full_analysis(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
                 "high_count": compliance_report.get("high_count"),
                 "total_ld_accrued_inr": compliance_report.get("total_ld_accrued_inr"),
             },
+            "compliance_events_full": compliance_report.get("events", []),
             "risk": {
                 "score": prediction.risk_score,
                 "label": prediction.risk_label,
@@ -335,18 +340,35 @@ async def upload_mpr(
     with open(rule_store_path, "r", encoding="utf-8") as f:
         rule_store = json.load(f)
 
+    # Update project day_number and last_actual_pct in DB:
+    try:
+        from db.database import SessionLocal
+        from db import models
+        db_session = SessionLocal()
+        proj = db_session.query(models.Project).filter(models.Project.id == contract_id).first()
+        if proj:
+            proj.day_number = exec_data.get("day_number", proj.day_number)
+            proj.last_actual_pct = exec_data.get("actual_physical_pct", proj.last_actual_pct)
+            proj.last_reporting_period = exec_data.get("reporting_period")
+            db_session.commit()
+        db_session.close()
+    except Exception as e:
+        print(f"[API] Error updating project state in DB: {e}")
+
     # Run full analysis pipeline
     try:
         # Compliance
-        compliance_result = compliance_agent.run_compliance(exec_data, rule_store)
+        compliance_result = compliance_agent.run(exec_data)
 
         # Risk
         prediction = risk_predictor.predict(exec_data, rule_store)
+        import dataclasses
+        risk_dict = dataclasses.asdict(prediction)
 
         # Explainer
         outputs = explainer_agent.explain(
             compliance_report=compliance_result,
-            risk_prediction=prediction.__dict__,
+            risk_prediction=risk_dict,
             rule_store=rule_store,
             exec_data=exec_data,
             audience=audience,
@@ -390,6 +412,7 @@ async def upload_mpr(
                 "compliance_pdf": outputs.get("compliance_pdf_path"),
                 "risk_summary": outputs.get("risk_summary_path"),
             },
+            "compliance_events_full": compliance_result.get("events", []),
             "compliance_md_preview": outputs.get("compliance_md", "")[:600] + "...",
         }
     except Exception as e:

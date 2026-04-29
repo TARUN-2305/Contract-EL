@@ -69,17 +69,6 @@ def _table(text: str, section_header: str) -> list[dict]:
     return rows
 
 
-def _safe_float(val) -> float:
-    if val is None:
-        return 0.0
-    try:
-        return float(str(val).replace(",", "").replace("₹", "").replace("%", "").strip())
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _safe_int(val) -> int:
-    return int(_safe_float(val))
 
 
 # ── Validation ────────────────────────────────────────────────────────────
@@ -162,7 +151,6 @@ def extract_from_table_row(tables, row_label: str, col_idx: int) -> str:
 def _safe_float(val) -> float:
     if val is None: return 0.0
     s = str(val).split(' ')[0] # handle '214 of 730' -> 214
-    import re
     m = re.search(r"[-+]?\d*\.\d+|\d+", s.replace(",", ""))
     if m:
         return float(m.group())
@@ -280,8 +268,6 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
     payment_delay_days = _safe_int(extract_from_table_row(doc.tables, "Payment Delay", 1) or _kv(text, "Payment Delay"))
     payment_delayed = payment_delay_days > 0
 
-    test_fail_rate = 0.0
-
     open_ncrs = [
         {"id": f"NCR-{i+1:03d}", "issued_date": period_end, "rectification_deadline_days": 30}
         for i in range(ncrs_pending)
@@ -351,7 +337,7 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
 
     return record
 
-def parse_mpr(md_content: str, prev_actual_pct: float = 0.0) -> dict:
+def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: bool = False) -> dict:
     """
     Parse MPR markdown content into typed exec_data dict.
     Raises MPRValidationError if validation fails.
@@ -557,7 +543,7 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0) -> dict:
     }
 
     # ── Validate ──────────────────────────────────────────────────────────
-    errors = validate_mpr(record, prev_actual_pct)
+    errors = validate_mpr(record, prev_actual_pct, bypass_date_check=bypass_date_check)
     if errors:
         raise MPRValidationError(errors)
 

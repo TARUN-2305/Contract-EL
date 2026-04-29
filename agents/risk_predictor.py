@@ -27,11 +27,11 @@ except ImportError:
     SHAP_AVAILABLE = False
 
 try:
-    from imblearn.over_sampling import SMOTE
+    from imblearn.over_sampling import ADASYN
     IMBLEARN_AVAILABLE = True
 except ImportError:
     IMBLEARN_AVAILABLE = False
-    print("[RiskPredictor] imbalanced-learn not available — skipping SMOTE")
+    print("[RiskPredictor] imbalanced-learn not available — skipping ADASYN")
 
 MODEL_PATH = "data/models/risk_predictor.pkl"
 FEATURE_NAMES = [
@@ -281,10 +281,15 @@ def train_model() -> object:
     print(f"[RiskPredictor] Original training set: {len(df)} samples, {y.mean():.1%} positive class")
 
     if IMBLEARN_AVAILABLE:
-        print("[RiskPredictor] Applying SMOTE for class balancing...")
-        smote = SMOTE(random_state=42)
-        X_resampled, y_resampled = smote.fit_resample(X, y)
-        print(f"[RiskPredictor] Resampled training set: {len(y_resampled)} samples, {y_resampled.mean():.1%} positive class")
+        print("[RiskPredictor] Applying ADASYN for class balancing...")
+        adasyn = ADASYN(random_state=42)
+        try:
+            X_resampled, y_resampled = adasyn.fit_resample(X, y)
+            print(f"[RiskPredictor] ADASYN resampled training set: {len(y_resampled)} samples, {y_resampled.mean():.1%} positive class")
+        except ValueError as e:
+            from imblearn.over_sampling import SMOTE
+            print(f"[RiskPredictor] ADASYN failed ({e}), falling back to SMOTE")
+            X_resampled, y_resampled = SMOTE(random_state=42).fit_resample(X, y)
         X, y = X_resampled, y_resampled
 
     if not XGB_AVAILABLE:

@@ -49,27 +49,30 @@ def extract_text_from_pdf(pdf_path: str) -> list[dict]:
     return pages
 
 def extract_text_from_docx(docx_path: str) -> list[dict]:
-    """Extract text from DOCX, each paragraph or table as a entry."""
-    pages = []
+    """Extract text from DOCX preserving structure via docx_to_md converter."""
     try:
-        import docx
-        doc = docx.Document(docx_path)
-        full_text = []
-        for para in doc.paragraphs:
-            if para.text.strip():
-                full_text.append(para.text.strip())
-        for table in doc.tables:
-            for row in table.rows:
-                row_text = " | ".join(cell.text.strip() for cell in row.cells)
-                full_text.append(row_text)
-        
-        # Docx doesn't have native "pages", so we group by blocks of text
-        # to simulate pages for the chunker
-        content = "\n\n".join(full_text)
-        pages.append({"page_number": 1, "text": content})
+        from utils.docx_to_md import docx_to_md
+        md_content = docx_to_md(docx_path)
+        return [{"page_number": 1, "text": md_content}]
     except Exception as e:
-        print(f"[ParserAgent] DOCX extraction failed: {e}")
-    return pages
+        print(f"[ParserAgent] DOCX→MD conversion failed: {e}, falling back to raw extract")
+        pages = []
+        try:
+            import docx
+            doc = docx.Document(docx_path)
+            full_text = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    full_text.append(para.text.strip())
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                    full_text.append(row_text)
+            content = "\n\n".join(full_text)
+            pages.append({"page_number": 1, "text": content})
+        except Exception as fallback_e:
+            print(f"[ParserAgent] Fallback DOCX extraction failed: {fallback_e}")
+        return pages
 
 
 # ── Semantic Chunking ──────────────────────────────────────────────────
@@ -330,6 +333,7 @@ class ParserAgent:
         scp_days: int,
         project_name: str,
         location: str,
+        contractor_name: str,
     ) -> dict:
         """Full parsing pipeline: File (PDF/DOCX) → chunks → embeddings → extraction → rule store."""
         print(f"[ParserAgent] Starting parse for contract {contract_id}")
@@ -391,6 +395,7 @@ class ParserAgent:
             "scp_days": scp_days,
             "project_name": project_name,
             "location": location,
+            "contractor_name": contractor_name,
             "appointed_date": None,
             "scheduled_completion_date": None,
         }

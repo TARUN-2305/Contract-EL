@@ -163,6 +163,7 @@ if run_btn and mpr_file is not None:
                 st.session_state["last_compliance_result"] = comp
                 st.session_state["last_risk_result"] = risk
                 st.session_state["last_parsed_mpr"] = parsed
+                st.session_state["compliance_events_full"] = result.get("compliance_events_full", [])
 
                 # Key metrics from parsed MPR
                 day_number_res = parsed.get("day_number", 730)

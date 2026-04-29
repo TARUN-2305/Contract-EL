@@ -10,3 +10,14 @@ ollama
 sqlalchemy
 uvicorn
 python-dotenv
+groq
+apscheduler
+httpx
+python-docx
+pdfplumber
+pypdf
+scikit-learn
+imbalanced-learn
+plotly
+pandas
+numpy

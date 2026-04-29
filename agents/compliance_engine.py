@@ -145,8 +145,11 @@ def check_milestones(exec_data: dict, rule_store: dict, today: date) -> list[Com
                     catch_up = False
                 else:
                     # NITI Aayog EPC: 0.05%/day of apportioned or total value
-                    ld_basis_pct = milestone.get("required_physical_progress_pct") or 100
-                    basis = cv * (ld_basis_pct / 100) if milestone.get("ld_basis") == "apportioned_milestone_value" else cv
+                    if milestone.get("ld_basis") == "apportioned_milestone_value" and milestone.get("id") != "M4":
+                        ld_basis_pct = milestone.get("required_physical_progress_pct") or 100
+                        basis = cv * (ld_basis_pct / 100)
+                    else:
+                        basis = cv  # M4 and all "total_contract_price" basis milestones use full CV
                     ld_rate = (milestone.get("ld_rate_pct_per_day") or 0.05) / 100
                     ld_today = ld_rate * basis * delay_days
                     ld_daily = ld_rate * basis
@@ -411,7 +414,7 @@ def check_payment_cycle(exec_data: dict, rule_store: dict, today: date) -> list[
     pw = rule_store.get("payment_workflow") or {}
     verify_days = pw.get("verification_deadline_days") or 15
     release_days = pw.get("payment_release_deadline_days") or 30
-    interest_rate_annual = 0.18  # 18% p.a. / Article 22.2 default
+    interest_rate_monthly = 0.01  # 1% per month per Article 22.2 / CPWD Clause 7
 
     for bill in exec_data.get("ra_bills", []):
         submitted = _parse_date(bill.get("submitted_date"))
@@ -426,7 +429,7 @@ def check_payment_cycle(exec_data: dict, rule_store: dict, today: date) -> list[
         paid_date = _parse_date(bill.get("paid_date"))
         if bill.get("verified") and not bill.get("paid") and today > release_deadline:
             overdue = (today - release_deadline).days
-            interest = amount * interest_rate_annual / 365 * overdue
+            interest = amount * interest_rate_monthly / 30 * overdue
             events.append(ComplianceEvent(
                 check_id="C13a", severity="HIGH",
                 title=f"RA Bill {bid} Payment Overdue ({overdue} days) — Interest Accruing",
@@ -434,7 +437,7 @@ def check_payment_cycle(exec_data: dict, rule_store: dict, today: date) -> list[
                 description=(
                     f"Bill {bid} (Rs.{amount:,.0f}) verified but payment not released. "
                     f"{overdue} days past 30-day deadline. Contractor entitled to interest: "
-                    f"Rs.{interest:,.0f} @ 18% p.a. (Article 22.2)."
+                    f"Rs.{interest:,.0f} @ 1% per month (Article 22.2)."
                 ),
                 financial_impact_inr=interest,
                 action="RELEASE_PAYMENT_IMMEDIATELY",
