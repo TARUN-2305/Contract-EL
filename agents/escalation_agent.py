@@ -281,12 +281,47 @@ class EscalationAgent:
         return updated
 
     def save_record(self, record: EscalationRecord, output_dir: str = "data/escalation") -> str:
-        """Persist escalation record to JSON."""
+        """Persist escalation record to JSON and Database."""
         import os
+        from db.database import SessionLocal
+        from db.models import EscalationEvent
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, f"escalation_{record.project_id}_{record.event_id}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(asdict(record), f, indent=2, default=str)
+
+        db = SessionLocal()
+        try:
+            db_event = db.query(EscalationEvent).filter(EscalationEvent.event_id == record.event_id).first()
+            if db_event:
+                db_event.current_tier = record.current_tier
+                db_event.tier_entered_date = record.tier_entered_date
+                db_event.tier_deadline = record.tier_deadline
+                db_event.responsible_party = record.responsible_party
+                db_event.next_action = record.next_action
+                db_event.clause = record.clause
+                db_event.notice_text = record.notice_text
+                db_event.is_final = record.is_final
+            else:
+                db_event = EscalationEvent(
+                    event_id=record.event_id,
+                    project_id=record.project_id,
+                    contract_type=record.contract_type,
+                    current_tier=record.current_tier,
+                    tier_entered_date=record.tier_entered_date,
+                    tier_deadline=record.tier_deadline,
+                    responsible_party=record.responsible_party,
+                    next_action=record.next_action,
+                    clause=record.clause,
+                    notice_text=record.notice_text,
+                    is_final=record.is_final,
+                    created_at=str(date.today())
+                )
+                db.add(db_event)
+            db.commit()
+        finally:
+            db.close()
+
         return path
 
 

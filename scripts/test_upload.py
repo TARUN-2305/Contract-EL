@@ -6,10 +6,10 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 client = httpx.Client(timeout=300.0)
-with open('data/mock_contracts/NH44_Karnataka_EPC.pdf', 'rb') as f:
+with open('Fake contracts and reports/CONTRACT_EPC_NH44_KA03.docx', 'rb') as f:
     r = client.post(
         'http://127.0.0.1:8000/upload-contract',
-        files={'file': ('NH44_Karnataka_EPC.pdf', f, 'application/pdf')},
+        files={'file': ('CONTRACT_EPC_NH44_KA03.docx', f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')},
         data={
             'contract_id': 'CONTRACT_001',
             'contract_type': 'EPC',

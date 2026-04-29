@@ -11,7 +11,7 @@ from typing import Dict, Any, List
 from utils.groq_client import groq_chat
 
 # ── Ollama (commented out — local fallback, requires gemma4:e2b + RAM) ──
-# import ollama
+
 # from httpx import Timeout
 # _ollama_client = ollama.Client(timeout=Timeout(300.0))
 

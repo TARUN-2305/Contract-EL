@@ -385,6 +385,42 @@ class ParserAgent:
                 audit_log[target]["warnings"] = warnings
                 unresolved.setdefault(target, []).extend(warnings)
 
+        # Stage 4b: LLM Fallback for unresolved fields
+        if unresolved:
+            print(f"[ParserAgent] Stage 4b: LLM Fallback for {len(unresolved)} fields...")
+            try:
+                # We extract the most relevant chunk text for fallback or pass the full text chunk if small
+                from utils.groq_client import get_groq_client
+                client = get_groq_client()
+                if client:
+                    # Construct prompt for the LLM
+                    system_prompt = "You are a legal contract parsing assistant. Extract the required missing data fields from the contract text."
+                    user_prompt = f"Contract Text (truncated): {full_text[:30000]}\n\nMissing Fields to extract: {list(unresolved.keys())}\n\nReturn ONLY a JSON dictionary where keys are the missing fields and values are the extracted data."
+                    
+                    response = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.0
+                    )
+                    
+                    llm_result = json.loads(response.choices[0].message.content)
+                    print(f"[ParserAgent] LLM Fallback extracted: {llm_result.keys()}")
+                    
+                    for k, v in llm_result.items():
+                        if k in extracted and v is not None:
+                            extracted[k] = v
+                            audit_log[k] = {"method": "groq_llm_fallback", "warnings": []}
+                            if k in unresolved:
+                                del unresolved[k]
+                else:
+                    print("[ParserAgent] Groq client not configured, skipping LLM fallback.")
+            except Exception as e:
+                print(f"[ParserAgent] LLM fallback failed: {e}")
+
         # Stage 5: Assemble rule store
         print("[ParserAgent] Stage 5: Assembling rule store...")
         from datetime import date

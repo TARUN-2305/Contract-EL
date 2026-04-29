@@ -224,17 +224,29 @@ if run_btn and mpr_file is not None:
                     days_list = sorted(days_list)
 
                     planned_curve = [min(100.0, (d / scp_days) * 100) for d in days_list]
-                    actual_curve = [
-                        min(actual_pct_res, (d / max(day_number_res, 1)) * actual_pct_res)
-                        if d <= day_number_res else None
-                        for d in days_list
-                    ]
-
                     fig_s = go.Figure()
                     fig_s.add_trace(go.Scatter(x=days_list, y=planned_curve, mode="lines",
                                                name="Planned (%)", line=dict(color="#2196F3", dash="dash")))
-                    fig_s.add_trace(go.Scatter(x=days_list, y=actual_curve, mode="lines+markers",
-                                               name="Actual (%)", line=dict(color="#FF9800", width=3)))
+                    
+                    fig_s.add_trace(go.Scatter(
+                        x=[day_number_res],
+                        y=[actual_pct_res],
+                        mode="markers+text",
+                        name=f"Actual: {actual_pct_res:.1f}% (Day {day_number_res})",
+                        marker=dict(color="#FF9800", size=14, symbol="circle"),
+                        text=[f"{actual_pct_res:.1f}%"],
+                        textposition="top center",
+                    ))
+                    
+                    planned_at_today = min(100.0, (day_number_res / scp_days) * 100)
+                    deviation = actual_pct_res - planned_at_today
+                    colour = "green" if deviation >= 0 else "red"
+                    fig_s.add_annotation(
+                        x=day_number_res, y=actual_pct_res,
+                        text=f"<b>{deviation:+.1f}% vs plan</b>",
+                        showarrow=True, arrowhead=2, ax=50, ay=-40,
+                        font=dict(color=colour, size=12),
+                    )
                     fig_s.add_vline(x=day_number_res, line_dash="dot", line_color="gray", annotation_text="Today")
                     fig_s.add_vline(x=scp_days, line_dash="dot", line_color="red", annotation_text="SCD")
                     fig_s.update_layout(title="Project S-Curve", xaxis_title="Days from Appointed Date",
@@ -251,7 +263,7 @@ if run_btn and mpr_file is not None:
                         if val_col:
                             df_shap["val"] = df_shap[val_col]
                             df_shap["color"] = df_shap["direction"].apply(
-                                lambda x: "#ef5350" if x == "Increases risk" else "#66bb6a")
+                                lambda x: "#ef5350" if x == "increases_risk" else "#66bb6a")
                             fig_shap = px.bar(df_shap, x="val", y="feature", orientation="h",
                                               title="Top Risk Drivers (SHAP)",
                                               color="color",
@@ -301,7 +313,7 @@ elif role == "Site Engineer":
     st.markdown("### 🔧 Field Action Items")
     if "last_compliance_result" in st.session_state:
         field_events = [
-            e for e in st.session_state["last_compliance_result"].get("events", [])
+            e for e in st.session_state.get("compliance_events_full", [])
             if e["severity"] in ("HIGH", "MEDIUM")
         ]
         if field_events:
@@ -347,6 +359,46 @@ elif role == "Contractor Rep":
         st.markdown(f"**LD Accrued:** ₹{ld:,.0f}")
     else:
         st.info("Upload and analyse an MPR to see contractor view.")
+
+    st.markdown("---")
+    st.markdown("### 📝 Submit FM Claim")
+    with st.form("fm_claim_form"):
+        fm_event_id = st.text_input("Event ID (e.g. FM-001)")
+        fm_event_date = st.date_input("Date of FM Event")
+        fm_category = st.selectbox("Category", ["FORCE_MAJEURE_WEATHER", "FORCE_MAJEURE_POLITICAL", "INDIRECT_POLITICAL"])
+        fm_description = st.text_area("Event Description")
+        fm_impact = st.text_area("Impact Assessment")
+        fm_duration = st.text_input("Estimated Duration (days)")
+        fm_mitigation = st.text_area("Mitigation Strategy")
+        fm_notice_date = st.date_input("Notice Submitted Date")
+        fm_submit = st.form_submit_button("Submit FM Claim")
+
+    if fm_submit and contract_id:
+        fm_claim = {
+            "event_id": fm_event_id,
+            "event_date": str(fm_event_date),
+            "category": fm_category,
+            "event_description": fm_description,
+            "impact_assessment": fm_impact,
+            "estimated_duration": fm_duration,
+            "mitigation_strategy": fm_mitigation,
+            "notice_submitted_date": str(fm_notice_date),
+        }
+        r = httpx.post(
+            f"{API_BASE}/process-fm-eot",
+            data={"project_id": contract_id, "fm_claim": json.dumps(fm_claim), "contract_id": contract_id},
+            timeout=30
+        )
+        if r.status_code == 200:
+            decision = r.json()["decision"]
+            if decision["decision"] == "APPROVED":
+                st.success(f"✅ FM Claim APPROVED — {decision['eot_days_approved']} days EoT granted.")
+            elif decision["decision"] == "REJECTED":
+                st.error(f"❌ FM Claim REJECTED — {decision['rejection_reason']}")
+            else:
+                st.warning(f"⚠️ FM Claim PARTIALLY APPROVED — {decision['eot_days_approved']} days EoT.")
+        else:
+            st.error(f"Error: {r.text[:300]}")
 
 # Footer
 st.markdown("---")

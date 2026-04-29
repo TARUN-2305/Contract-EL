@@ -29,11 +29,26 @@ orchestrator = OrchestratorAgent()
 def daily_background_job():
     """Runs daily to check for expired cure periods and escalate."""
     print("[Scheduler] Running daily background job...")
-    # In a real app, we'd load active EscalationRecords from DB.
-    # For now, we simulate finding an expired record.
-    # Dummy implementation to show it's wired:
-    # expired_records = db.query(models.EscalationRecord).filter(...)
-    # updated = escalation_agent.check_expired_tiers(expired_records)
+    from db.database import SessionLocal
+    from db.models import EscalationEvent
+    from agents.escalation_agent import EscalationAgent, EscalationRecord
+    db = SessionLocal()
+    try:
+        rows = db.query(EscalationEvent).filter(EscalationEvent.is_final == False).all()
+        records = [EscalationRecord(
+            event_id=r.event_id, project_id=r.project_id,
+            contract_type=r.contract_type, current_tier=r.current_tier,
+            tier_entered_date=r.tier_entered_date, tier_deadline=r.tier_deadline,
+            responsible_party=r.responsible_party, next_action=r.next_action,
+            clause=r.clause, notice_text=r.notice_text, is_final=r.is_final,
+        ) for r in rows]
+        agent = EscalationAgent()
+        updated = agent.check_expired_tiers(records)
+        for rec in updated:
+            agent.save_record(rec)
+        print(f"[Scheduler] Checked {len(records)} escalation records, {len(updated)} updated.")
+    finally:
+        db.close()
     print("[Scheduler] Daily job complete.")
 
 @contextlib.asynccontextmanager
@@ -46,9 +61,45 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ContractGuard AI API", lifespan=lifespan)
 
+from agents.eot_agent import EoTAgent
+eot_agent = EoTAgent()
 
+@app.post("/process-hindrance-eot")
+def process_hindrance_eot(
+    project_id: str = Form(...),
+    hindrance_id: str = Form(...),
+    hindrances: str = Form(...),   # JSON string
+    contract_id: str = Form(...),
+):
+    """Process a hindrance-based EoT claim."""
+    rule_store_path = f"data/rule_store/rule_store_{contract_id}.json"
+    if not os.path.exists(rule_store_path):
+        raise HTTPException(status_code=404, detail="Rule store not found")
+    with open(rule_store_path, encoding="utf-8") as f:
+        rule_store = json.load(f)
+    hindrance_list = json.loads(hindrances)
+    decision = eot_agent.process_hindrance_eot(project_id, hindrance_id, hindrance_list, rule_store)
+    path = eot_agent.save_decision(decision)
+    import dataclasses
+    return {"decision": dataclasses.asdict(decision), "saved_to": path}
 
-
+@app.post("/process-fm-eot")
+def process_fm_eot(
+    project_id: str = Form(...),
+    fm_claim: str = Form(...),   # JSON string
+    contract_id: str = Form(...),
+):
+    """Process a Force Majeure EoT claim."""
+    rule_store_path = f"data/rule_store/rule_store_{contract_id}.json"
+    if not os.path.exists(rule_store_path):
+        raise HTTPException(status_code=404, detail="Rule store not found")
+    with open(rule_store_path, encoding="utf-8") as f:
+        rule_store = json.load(f)
+    claim = json.loads(fm_claim)
+    decision = eot_agent.process_fm_eot(project_id, claim, rule_store)
+    path = eot_agent.save_decision(decision)
+    import dataclasses
+    return {"decision": dataclasses.asdict(decision), "saved_to": path}
 class TriggerRequest(BaseModel):
     project_id: str
     trigger_type: str

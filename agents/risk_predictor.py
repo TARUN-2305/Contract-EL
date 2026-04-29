@@ -305,7 +305,31 @@ def train_model() -> object:
         random_state=42,
         n_jobs=-1,
     )
+    
+    try:
+        import wandb
+        wandb.init(project="ContractGuard-AI", name="risk_predictor_training")
+        wandb.config.update({
+            "n_estimators": 400,
+            "max_depth": 6,
+            "learning_rate": 0.05,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
+            "resampling": "ADASYN" if IMBLEARN_AVAILABLE else "None",
+            "samples": len(X)
+        })
+    except ImportError:
+        wandb = None
+        
     model.fit(X, y, verbose=False)
+    
+    if wandb:
+        from sklearn.metrics import average_precision_score
+        y_pred_proba = model.predict_proba(X)[:, 1]
+        aucpr = average_precision_score(y, y_pred_proba)
+        wandb.log({"train_aucpr": aucpr})
+        wandb.finish()
+        
     print("[RiskPredictor] Model trained successfully")
     return model
 

@@ -43,7 +43,7 @@ class EoTDecision:
 
 # ── Overlap-Aware EoT Calculation ─────────────────────────────────────────
 
-def calculate_net_eot(hindrances: list) -> tuple[int, int]:
+def calculate_net_eot(hindrances: list, today: date = None) -> tuple[int, int]:
     """
     Compute net eligible EoT days from a list of hindrance entries.
     Merges overlapping date ranges to prevent double-counting.
@@ -53,13 +53,21 @@ def calculate_net_eot(hindrances: list) -> tuple[int, int]:
     Returns:
         (net_eot_days, overlap_deducted_days)
     """
+    today = today or date.today()
     ranges = []
     for h in hindrances:
-        if h.get("status") == "OPEN":
-            continue  # Only closed (resolved) hindrances count
         start = _parse_date(h.get("date_of_occurrence"))
-        end = _parse_date(h.get("date_of_removal"))
-        if start and end and end >= start:
+        if not start:
+            continue
+            
+        if h.get("status") == "OPEN":
+            end = today
+        else:
+            end = _parse_date(h.get("date_of_removal"))
+            if not end:
+                end = start
+                
+        if end >= start:
             ranges.append((start, end))
 
     if not ranges:
@@ -79,12 +87,18 @@ def calculate_net_eot(hindrances: list) -> tuple[int, int]:
     # Use raw ranges for gross calc
     gross_days = 0
     for h in hindrances:
-        if h.get("status") == "OPEN":
+        start = _parse_date(h.get("date_of_occurrence"))
+        if not start:
             continue
-        s = _parse_date(h.get("date_of_occurrence"))
-        e = _parse_date(h.get("date_of_removal"))
-        if s and e:
-            gross_days += (e - s).days
+            
+        if h.get("status") == "OPEN":
+            end = today
+        else:
+            end = _parse_date(h.get("date_of_removal"))
+            if not end:
+                end = start
+                
+        gross_days += (end - start).days
 
     net_days = sum((e - s).days for s, e in merged)
     overlap_deducted = max(0, gross_days - net_days)
@@ -267,7 +281,7 @@ class EoTAgent:
             )
 
         # Rule 4: Overlap-aware net days
-        net_days, overlap = calculate_net_eot(hindrances)
+        net_days, overlap = calculate_net_eot(hindrances, today=today)
         approved = min(net_days, claimed_days) if claimed_days > 0 else net_days
         revised = compute_revised_milestones(rule_store, approved)
 
