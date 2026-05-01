@@ -43,7 +43,7 @@ class ComplianceAgent:
 
         # Persist to filesystem
         os.makedirs("data/compliance", exist_ok=True)
-        period = exec_data.get("reporting_period", "unknown")
+        period = exec_data.get("reporting_period") or "unknown"
         path = f"data/compliance/compliance_{contract_id}_{period}.json"
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, default=str)

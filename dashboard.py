@@ -49,6 +49,8 @@ st.sidebar.markdown("---")
 ROLES = ["Contract Manager", "Project Manager", "Site Engineer", "Auditor", "Contractor Rep"]
 role = st.sidebar.selectbox("Select Role", ROLES)
 contract_id = st.sidebar.text_input("Contract ID", value="")
+if contract_id:
+    contract_id = contract_id.replace("/", "_").replace("\\", "_")
 st.sidebar.markdown("---")
 
 # ── Header ─────────────────────────────────────────────────────────────

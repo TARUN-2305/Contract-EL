@@ -73,6 +73,7 @@ def process_hindrance_eot(
     contract_id: str = Form(...),
 ):
     """Process a hindrance-based EoT claim."""
+    contract_id = contract_id.replace("/", "_").replace("\\", "_")
     rule_store_path = f"data/rule_store/rule_store_{contract_id}.json"
     if not os.path.exists(rule_store_path):
         raise HTTPException(status_code=404, detail="Rule store not found")
@@ -91,6 +92,7 @@ def process_fm_eot(
     contract_id: str = Form(...),
 ):
     """Process a Force Majeure EoT claim."""
+    contract_id = contract_id.replace("/", "_").replace("\\", "_")
     rule_store_path = f"data/rule_store/rule_store_{contract_id}.json"
     if not os.path.exists(rule_store_path):
         raise HTTPException(status_code=404, detail="Rule store not found")
@@ -164,6 +166,7 @@ async def upload_contract(
     db: Session = Depends(get_db),
 ):
     """Upload a contract PDF and trigger the Parser Agent."""
+    contract_id = contract_id.replace("/", "_").replace("\\", "_")
     print(f"[API] Uploading contract: {contract_id} ({file.filename})")
 
     # Save uploaded file
@@ -239,6 +242,8 @@ def run_compliance(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
 def predict_risk(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
     """Predict project risk score using XGBoost model."""
     contract_id = exec_data.get("contract_id") or exec_data.get("project_id")
+    if contract_id:
+        contract_id = contract_id.replace("/", "_").replace("\\", "_")
     print(f"[API] Risk prediction for {contract_id}")
     try:
         rule_store_path = f"data/rule_store/rule_store_{contract_id}.json"
@@ -254,7 +259,7 @@ def predict_risk(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
         prediction = risk_predictor.predict(exec_data, rule_store)
         # Persist
         os.makedirs("data/risk", exist_ok=True)
-        period = exec_data.get("reporting_period", "unknown")
+        period = exec_data.get("reporting_period") or "unknown"
         out_path = f"data/risk/risk_{contract_id}_{period}.json"
         import dataclasses
         with open(out_path, "w", encoding="utf-8") as f:
@@ -277,6 +282,8 @@ def predict_risk(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
 def full_analysis(exec_data: Dict[str, Any], db: Session = Depends(get_db)):
     """Run compliance + risk prediction + explainer in one call. Full pipeline output."""
     contract_id = exec_data.get("contract_id") or exec_data.get("project_id")
+    if contract_id:
+        contract_id = contract_id.replace("/", "_").replace("\\", "_")
     print(f"[API] Full analysis for {contract_id}")
     try:
         # Load rule store
@@ -380,6 +387,7 @@ async def upload_mpr(
         raise HTTPException(status_code=400, detail=f"MPR parse error: {str(e)}")
 
     # Inject contract_id from form param (overrides extracted Agreement Number if provided)
+    contract_id = contract_id.replace("/", "_").replace("\\", "_")
     exec_data["contract_id"] = contract_id
 
     # Load rule store
