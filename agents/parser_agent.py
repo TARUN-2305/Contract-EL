@@ -389,33 +389,50 @@ class ParserAgent:
         if unresolved:
             print(f"[ParserAgent] Stage 4b: LLM Fallback for {len(unresolved)} fields...")
             try:
-                # We extract the most relevant chunk text for fallback or pass the full text chunk if small
                 from utils.groq_client import get_groq_client
                 client = get_groq_client()
                 if client:
-                    # Construct prompt for the LLM
-                    system_prompt = "You are a legal contract parsing assistant. Extract the required missing data fields from the contract text."
-                    user_prompt = f"Contract Text (truncated): {full_text[:30000]}\n\nMissing Fields to extract: {list(unresolved.keys())}\n\nReturn ONLY a JSON dictionary where keys are the missing fields and values are the extracted data."
-                    
-                    response = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        response_format={"type": "json_object"},
-                        temperature=0.0
-                    )
-                    
-                    llm_result = json.loads(response.choices[0].message.content)
-                    print(f"[ParserAgent] LLM Fallback extracted: {llm_result.keys()}")
-                    
-                    for k, v in llm_result.items():
-                        if k in extracted and v is not None:
-                            extracted[k] = v
-                            audit_log[k] = {"method": "groq_llm_fallback", "warnings": []}
-                            if k in unresolved:
-                                del unresolved[k]
+                    for target in list(unresolved.keys()):
+                        print(f"[ParserAgent] Running LLM fallback for {target}...")
+                        # 1. Semantic search for target chunks
+                        db = SessionLocal()
+                        try:
+                            # Using the query defined in EXTRACTION_PLAN
+                            query = next((p["query"] for p in EXTRACTION_PLAN if p["target"] == target), target)
+                            results = self.vector_store.search(db, contract_id, query, top_k=3)
+                            
+                            # Combine chunk text, limiting to ~6000 chars
+                            context_text = "\n\n".join([r["text"] for r in results])[:6000]
+                        finally:
+                            db.close()
+                            
+                        if not context_text:
+                            continue
+                            
+                        # 2. Query LLM
+                        system_prompt = "You are a legal contract parsing assistant. Extract the required missing data fields from the contract text."
+                        user_prompt = f"Contract Text:\n{context_text}\n\nMissing Field to extract: {target}\n\nReturn ONLY a JSON dictionary where the key is '{target}' and the value is the extracted data matching the required schema. If not found, return null for the value."
+                        
+                        response = client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            response_format={"type": "json_object"},
+                            temperature=0.0
+                        )
+                        
+                        llm_result = json.loads(response.choices[0].message.content)
+                        val = llm_result.get(target)
+                        
+                        if val is not None:
+                            extracted[target] = val
+                            audit_log[target] = {"method": "groq_llm_fallback", "warnings": []}
+                            del unresolved[target]
+                            print(f"[ParserAgent] Fallback successful for {target}")
+                        else:
+                            print(f"[ParserAgent] Fallback failed for {target} (returned null)")
                 else:
                     print("[ParserAgent] Groq client not configured, skipping LLM fallback.")
             except Exception as e:

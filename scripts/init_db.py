@@ -3,7 +3,8 @@ from urllib.parse import urlparse, unquote
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from db.database import engine, Base, DATABASE_URL
-from db.models import User, Project, RuleStore, ComplianceEvent
+from db.models import User, Project, RuleStore, ComplianceEvent, EscalationEvent
+from db.vector_store import ClauseEmbedding
 
 def init_db():
     # Parse DATABASE_URL using urllib for safe handling of special chars

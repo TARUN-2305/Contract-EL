@@ -41,6 +41,7 @@ def daily_background_job():
             tier_entered_date=r.tier_entered_date, tier_deadline=r.tier_deadline,
             responsible_party=r.responsible_party, next_action=r.next_action,
             clause=r.clause, notice_text=r.notice_text, is_final=r.is_final,
+            history=r.history or []
         ) for r in rows]
         agent = EscalationAgent()
         updated = agent.check_expired_tiers(records)
@@ -365,7 +366,7 @@ async def upload_mpr(
         else:
             md_content = content_bytes.decode("utf-8")
             from agents.mpr_parser import parse_mpr
-            exec_data = parse_mpr(md_content, prev_actual_pct)
+            exec_data = parse_mpr(md_content, prev_actual_pct, bypass_date_check=bypass_date_check)
     except MPRValidationError as e:
         raise HTTPException(
             status_code=422,

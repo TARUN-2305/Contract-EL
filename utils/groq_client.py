@@ -126,6 +126,17 @@ def groq_narrate(
     )
 
 
+def get_groq_client():
+    """Return a Groq client using the next available key, or None if no keys."""
+    if not _KEYS:
+        return None
+    try:
+        from groq import Groq
+        return Groq(api_key=_next_key())
+    except ImportError:
+        return None
+
+
 # ── Quick health check ──────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"[GroqClient] Loaded {len(_KEYS)} API key(s)")

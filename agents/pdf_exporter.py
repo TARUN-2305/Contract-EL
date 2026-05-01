@@ -18,14 +18,17 @@ class PDFExporter:
         Supports headings (#, ##, ###), bold (**text**), lists (-), and basic tables.
         """
         pdf = FPDF()
+        pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+        pdf.add_font("DejaVu", "B", "fonts/DejaVuSans-Bold.ttf", uni=True)
+        
         pdf.add_page()
         pdf.set_left_margin(15)
         pdf.set_right_margin(15)
         
         # Header
-        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_font("DejaVu", "B", 16)
         pdf.cell(0, 10, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_font("DejaVu", "", 10)
         pdf.cell(0, 10, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         pdf.line(15, 30, 195, 30)
         pdf.ln(10)
@@ -37,39 +40,39 @@ class PDFExporter:
             line = line.replace('\t', '    ') # Replace tabs
             # Headings
             if line.startswith('# '):
-                pdf.set_font("Helvetica", "B", 18)
+                pdf.set_font("DejaVu", "B", 18)
                 pdf.ln(5)
                 pdf.multi_cell(0, 10, line.replace('# ', '').replace('**', ''), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.ln(2)
             elif line.startswith('## '):
-                pdf.set_font("Helvetica", "B", 14)
+                pdf.set_font("DejaVu", "B", 14)
                 pdf.ln(5)
                 pdf.multi_cell(0, 8, line.replace('## ', '').replace('**', ''), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             elif line.startswith('### '):
-                pdf.set_font("Helvetica", "B", 12)
+                pdf.set_font("DejaVu", "B", 12)
                 pdf.ln(3)
                 pdf.multi_cell(0, 6, line.replace('### ', '').replace('**', ''), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             elif line.startswith('> '):
                 # Blockquote (AI Summary)
-                pdf.set_font("Helvetica", "I", 11)
+                pdf.set_font("DejaVu", "", 11)
                 pdf.set_text_color(50, 50, 50)
                 pdf.multi_cell(0, 6, line.replace('> ', '').replace('**', ''), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_text_color(0, 0, 0)
                 pdf.ln(2)
             elif line.startswith('- '):
                 # Bullet points
-                pdf.set_font("Helvetica", "", 11)
+                pdf.set_font("DejaVu", "", 11)
                 clean_line = line.replace('**', '')
                 pdf.multi_cell(0, 6, f"  \u2022 {clean_line[2:]}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             elif line.startswith('|') and '---' not in line:
                 # Basic Table Rows
-                pdf.set_font("Courier", "", 9)
+                pdf.set_font("DejaVu", "", 9)
                 pdf.cell(0, 5, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             elif line.strip() == '' or '---' in line:
                 pdf.ln(3)
             else:
                 # Normal paragraph text
-                pdf.set_font("Helvetica", "", 11)
+                pdf.set_font("DejaVu", "", 11)
                 clean_line = line.replace('**', '')
                 if clean_line.strip():
                     pdf.multi_cell(0, 6, clean_line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)

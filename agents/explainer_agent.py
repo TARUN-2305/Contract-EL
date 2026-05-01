@@ -115,7 +115,9 @@ def generate_compliance_report_md(
     news_tool = NewsTool()
     weather_tool = WeatherTool()
     
-    news_data = news_tool.get_entity_news(contractor_name)
+    news_data = {}
+    if contractor_name and contractor_name.lower() != "contractor":
+        news_data = news_tool.get_entity_news(contractor_name)
     fm_events = exec_data.get("force_majeure_events", [])
     weather_data = None
     if fm_events:

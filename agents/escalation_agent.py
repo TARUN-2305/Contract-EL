@@ -302,6 +302,7 @@ class EscalationAgent:
                 db_event.clause = record.clause
                 db_event.notice_text = record.notice_text
                 db_event.is_final = record.is_final
+                db_event.history = record.history
             else:
                 db_event = EscalationEvent(
                     event_id=record.event_id,
@@ -315,7 +316,8 @@ class EscalationAgent:
                     clause=record.clause,
                     notice_text=record.notice_text,
                     is_final=record.is_final,
-                    created_at=str(date.today())
+                    created_at=str(date.today()),
+                    history=record.history
                 )
                 db.add(db_event)
             db.commit()

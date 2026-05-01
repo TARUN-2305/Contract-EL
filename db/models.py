@@ -53,3 +53,4 @@ class EscalationEvent(Base):
     notice_text = Column(String, nullable=True)
     is_final = Column(Boolean, default=False)
     created_at = Column(String, nullable=True)
+    history = Column(JSON, nullable=True, default=list)

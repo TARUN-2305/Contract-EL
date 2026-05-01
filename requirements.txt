@@ -6,7 +6,6 @@ sentence-transformers
 xgboost
 shap
 fpdf2
-ollama
 sqlalchemy
 uvicorn
 python-dotenv

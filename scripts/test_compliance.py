@@ -29,7 +29,7 @@ exec_data = {
         {
             "id": "NCR-001",
             "defect": "Subgrade compaction failure",
-            "issued_date": "2025-11-01",
+            "issued_date": "2025-12-21",
             "rectification_deadline_days": 30
         }
     ],

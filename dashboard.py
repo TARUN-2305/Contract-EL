@@ -309,6 +309,25 @@ if role == "Auditor":
     else:
         st.info("No audit trail available.")
 
+elif role == "Project Manager":
+    st.markdown("### 📊 Project Manager Overview")
+    if "last_compliance_result" not in st.session_state:
+        if st.button("🔄 Load Latest Analysis") and contract_id:
+            comp_dir = "data/compliance"
+            if os.path.exists(comp_dir):
+                files = [f for f in sorted(os.listdir(comp_dir), reverse=True) if contract_id in f]
+                if files:
+                    with open(os.path.join(comp_dir, files[0]), encoding="utf-8") as f:
+                        loaded = json.load(f)
+                    st.session_state["last_compliance_result"] = {
+                        "total_events": loaded.get("total_events", 0),
+                        "critical_count": loaded.get("critical_count", 0),
+                        "high_count": loaded.get("high_count", 0),
+                        "total_ld_accrued_inr": loaded.get("total_ld_accrued_inr", 0),
+                    }
+                    st.session_state["compliance_events_full"] = loaded.get("events", [])
+                    st.rerun()
+
 elif role == "Site Engineer":
     st.markdown("### 🔧 Field Action Items")
     if "last_compliance_result" in st.session_state:
@@ -345,7 +364,9 @@ elif role == "Contractor Rep":
     st.info("View your current compliance status and pending actions. LD deductions and payment status visible here.")
     if "last_compliance_result" in st.session_state:
         latest = st.session_state["last_compliance_result"]
-        st.markdown(f"**Latest Period:** {latest.get('reporting_period', '—')}")
+        parsed_mpr = st.session_state.get("last_parsed_mpr", {})
+        period = parsed_mpr.get('reporting_period') or "—"
+        st.markdown(f"**Latest Period:** {period}")
         st.markdown(f"**Total Events:** {latest.get('total_events', 0)}")
         ld = latest.get('total_ld_accrued_inr', 0)
         st.markdown(f"**LD Accrued:** ₹{ld:,.0f}")
@@ -353,7 +374,10 @@ elif role == "Contractor Rep":
         files = sorted(os.listdir("data/compliance"), reverse=True)
         with open(os.path.join("data/compliance", files[0]), encoding="utf-8") as f:
             latest = json.load(f)
-        st.markdown(f"**Latest Period:** {latest.get('reporting_period', '—')}")
+        period = "—"
+        if latest.get("events"):
+            period = latest["events"][0].get("reporting_period", "—")
+        st.markdown(f"**Latest Period:** {period}")
         st.markdown(f"**Total Events:** {latest.get('total_events', 0)}")
         ld = latest.get('total_ld_accrued_inr', 0)
         st.markdown(f"**LD Accrued:** ₹{ld:,.0f}")

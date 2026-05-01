@@ -105,8 +105,9 @@ class WeatherTool:
         ratio = total_rain / max(1, hist_rain)
         anomaly_score = min(1.0, max(0.0, (ratio - 1) / 2))
         
-        # Consider an anomaly score > 0.5 as valid grounds for FM review
-        is_valid = anomaly_score > 0.5 or weather_data.get("extreme_rainfall_days", 0) > 0
+        # Consider an anomaly score >= 0.75 as valid grounds for FM review, or > 2 extreme days
+        FM_ANOMALY_THRESHOLD = 0.75
+        is_valid = anomaly_score >= FM_ANOMALY_THRESHOLD or weather_data.get("extreme_rainfall_days", 0) > 2
         
         return {
             "valid": is_valid,

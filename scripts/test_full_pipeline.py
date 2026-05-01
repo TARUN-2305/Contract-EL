@@ -33,7 +33,7 @@ exec_data = {
     "variation_orders": [{"vo_id": "VO-001"}],
     "ra_bills": [],
     "weather_anomaly_score": 0.35,
-    "open_ncrs": [{"id": "NCR-001", "defect": "Compaction", "issued_date": "2025-11-01", "rectification_deadline_days": 30}],
+    "open_ncrs": [{"id": "NCR-001", "defect": "Compaction", "issued_date": "2026-05-16", "rectification_deadline_days": 30}],
 }
 
 r = httpx.post("http://127.0.0.1:8000/full-analysis", json=exec_data, timeout=60)
