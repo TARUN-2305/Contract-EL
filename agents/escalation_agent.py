@@ -124,12 +124,13 @@ class EscalationRecord:
     is_final: bool = False
     history: list = field(default_factory=list)
 
-    def days_remaining(self) -> Optional[int]:
+    def days_remaining(self, today: date = None) -> Optional[int]:
+        today = today or date.today()
         if not self.tier_deadline:
             return None
         deadline = _parse_date(self.tier_deadline)
         if deadline:
-            return max(0, (deadline - date.today()).days)
+            return max(0, (deadline - today).days)
         return None
 
 
@@ -252,12 +253,12 @@ class EscalationAgent:
             is_final=(next_state == "CLOSED"),
         )
 
-    def check_expired_tiers(self, records: list[EscalationRecord]) -> list[EscalationRecord]:
+    def check_expired_tiers(self, records: list[EscalationRecord], today: date = None) -> list[EscalationRecord]:
         """
         Review a list of escalation records and advance any whose cure period has expired.
         Called by APScheduler background job.
         """
-        today = date.today()
+        today = today or date.today()
         updated = []
         for record in records:
             if record.tier_deadline:

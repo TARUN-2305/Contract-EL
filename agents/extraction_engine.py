@@ -42,7 +42,14 @@ def extract_milestones(text: str) -> list:
     for i, block in enumerate(blocks):
         pct_scp = _int(_find(r"(\d+)%\s*of\s*(?:the\s+)?Scheduled\s+Construction\s+Period", block))
         day = _int(_find(r"Day\s+(\d+)\s+from\s+(?:the\s+)?Appointed", block))
+        if day is None:
+            day = _int(_find(r"\|\s*Day\s+(\d+)\s*\|", block))
+        if day is None:
+            day = _int(_find(r"\bDay\s+(\d+)\b", block))
+        
         progress = _int(_find(r"(\d+)%\s*physical\s+progress", block))
+        if progress is None:
+            progress = _int(_find(r"\|\s*(\d+)%\s*\|", block))
         ld_rate = _float(_find(r"(\d+\.?\d*)\s*%\s*of\s+the\s+apportioned\s+milestone\s+value\s+per\s+day", block))
         catch_up = bool(re.search(r"catch.up\s+refund", block, re.IGNORECASE))
 
@@ -103,12 +110,12 @@ def extract_liquidated_damages(text: str) -> dict:
 
 def extract_performance_security(text: str) -> dict:
     return {
-        "pct_of_contract_value": _float(_find(r"(\d+\.?\d*)%\s+of\s+the\s+(?:Tendered|Contract)\s+Value", text)),
+        "pct_of_contract_value": _float(_find(r"(\d+\.?\d*)%\s+of\s+the\s+(?:Tendered|Contract)\s+(?:Value|Price)", text)),
         "amount_inr": _float(re.sub(r"[^\d.]", "", _find(r"Rs\.\s*([\d,]+)", text) or "")),
         "acceptable_forms": re.findall(
             r"(Bank\s+Guarantee|Fixed\s+Deposit\s+Receipt|FDR|Insurance\s+Surety\s+Bond)", text, re.IGNORECASE
         ),
-        "submission_deadline_days": _int(_find(r"within\s+(\d+)\s+days\s+of\s+the\s+Letter\s+of\s+Acceptance", text)),
+        "submission_deadline_days": _int(_find(r"within\s+(\d+)\s+days\s+of\s+(?:receipt\s+of\s+)?the\s+Letter\s+of\s+Acceptance", text)),
         "late_fee_pct_per_day": _float(_find(r"(\d+\.?\d*)%\s+per\s+day\s+of\s+delay", text)),
         "max_extension_days": _int(_find(r"maximum\s+extension\s+of\s+(\d+)\s+days", text)),
         "consequence_of_failure": _find(r"(debarred|cancelled|forfeited[^.]+\.)", text),
@@ -131,7 +138,9 @@ def extract_force_majeure(text: str) -> dict:
 
 def extract_eot_rules(text: str) -> dict:
     return {
-        "application_deadline_days": _int(_find(r"within\s+(\d+)\s+days\s+of\s+the\s+hindrance", text)),
+        "application_deadline_days": _int(
+            _find(r"within\s+(\d+)(?:\s*\([^)]+\))?\s+days\s+of\s+(?:the\s+)?(?:hindrance|occurrence)", text)
+        ),
         "hindrance_register_mandatory": bool(re.search(r"Hindrance\s+Register", text, re.IGNORECASE)),
         "overlap_deduction_required": bool(re.search(r"[Oo]verlapping\s+hindrances|concurrent\s+delays", text, re.IGNORECASE)),
         "source_clause": "Clause 5",
@@ -196,7 +205,9 @@ def extract_payment_workflow(text: str) -> dict:
     return {
         "ra_bill_submission_day": _int(_find(r"(\d+)(?:st|th|nd|rd)?\s+of\s+each\s+month", text)),
         "verification_deadline_days": _int(_find(r"verify.*?within\s+(\d+)\s+days", text)),
-        "payment_release_deadline_days": _int(_find(r"[Pp]ayment\s+shall\s+be\s+released\s+within\s+(\d+)\s+days", text)),
+        "payment_release_deadline_days": _int(
+            _find(r"(?:payment\s+shall\s+be\s+released|shall\s+release\s+payment|release\s+payment)\s+within\s+(\d+)\s+days", text)
+        ),
         "mandatory_deductions": deductions if deductions else None,
         "source_clause": "Clause 7",
     }

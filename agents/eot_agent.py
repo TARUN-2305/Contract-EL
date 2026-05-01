@@ -281,8 +281,27 @@ class EoTAgent:
             )
 
         # Rule 4: Overlap-aware net days
-        net_days, overlap = calculate_net_eot(hindrances, today=today)
-        approved = min(net_days, claimed_days) if claimed_days > 0 else net_days
+        target_start = _parse_date(hindrance.get("date_of_occurrence"))
+        target_end = _parse_date(hindrance.get("date_of_removal")) or today
+
+        # Calculate gross days for this hindrance
+        gross_this = (target_end - target_start).days if target_start and target_end else 0
+
+        # Calculate overlap with OTHER hindrances (not this one)
+        other_hindrances = [h for h in hindrances if h.get("hindrance_id") != hindrance_id]
+        overlap_days = 0
+        for other in other_hindrances:
+            other_start = _parse_date(other.get("date_of_occurrence"))
+            other_end = _parse_date(other.get("date_of_removal")) or today
+            if other_start and other_end and target_start and target_end:
+                # Days of overlap between this hindrance and the other
+                overlap_start = max(target_start, other_start)
+                overlap_end = min(target_end, other_end)
+                if overlap_end > overlap_start:
+                    overlap_days += (overlap_end - overlap_start).days
+
+        net_this = max(0, gross_this - overlap_days)
+        approved = min(net_this, claimed_days) if claimed_days > 0 else net_this
         revised = compute_revised_milestones(rule_store, approved)
 
         decision = "APPROVED" if approved == claimed_days else "PARTIALLY_APPROVED"

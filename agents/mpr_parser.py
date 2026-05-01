@@ -268,6 +268,14 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
     payment_delay_days = _safe_int(extract_from_table_row(doc.tables, "Payment Delay", 1) or _kv(text, "Payment Delay"))
     payment_delayed = payment_delay_days > 0
 
+    ld_deducted = _safe_float(
+        extract_from_table_row(doc.tables, "Cumulative LD Deducted", 1)
+        or extract_from_table_row(doc.tables, "LD Deducted", 1)
+        or _kv(text, "Cumulative LD Deducted")
+    )
+    if ld_deducted > 0 and ld_deducted < 10000:
+        ld_deducted = ld_deducted * 100000
+
     open_ncrs = [
         {"id": f"NCR-{i+1:03d}", "issued_date": period_end, "rectification_deadline_days": 30}
         for i in range(ncrs_pending)
@@ -322,7 +330,7 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
         "payment_received_date":           prev_payment_date,
         "payment_delay_days":              payment_delay_days,
         "payment_delayed_streak":          1 if payment_delayed else 0,
-        "ld_accumulated_inr":       0.0,
+        "ld_accumulated_inr":       ld_deducted,
         "performance_security_submitted": True,
         "hindrance_register_unsigned_entries": 0,
         "hindrances":               [],
@@ -464,6 +472,10 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: 
 
     payment_delayed = payment_delay_days > 0
 
+    ld_deducted_raw = _kv(text, "Cumulative LD Deducted", float) or _kv(text, "LD Deducted", float) or 0.0
+    if ld_deducted_raw > 0 and ld_deducted_raw < 10000:
+        ld_deducted_raw = ld_deducted_raw * 100000
+
     # ── Assemble exec_data ────────────────────────────────────────────────
     record = {
         # Metadata
@@ -533,7 +545,7 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: 
         "payment_delayed_streak":          1 if payment_delayed else 0,
 
         # Defaults for compliance engine
-        "ld_accumulated_inr":       0.0,
+        "ld_accumulated_inr":       ld_deducted_raw,
         "performance_security_submitted": True,
         "hindrance_register_unsigned_entries": 0,
         "hindrances":               [],

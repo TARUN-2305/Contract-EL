@@ -391,6 +391,8 @@ async def upload_mpr(
         )
     with open(rule_store_path, "r", encoding="utf-8") as f:
         rule_store = json.load(f)
+    
+    exec_data["appointed_date"] = rule_store.get("appointed_date")
 
     # Update project day_number and last_actual_pct in DB:
     try:
