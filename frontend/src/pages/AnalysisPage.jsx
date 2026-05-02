@@ -21,17 +21,30 @@ function getSeverityClass(s) {
 }
 
 // ── S-Curve Chart ─────────────────────────────────────────────────────────
-function SCurveChart({ dayNumber, actualPct, scpDays = 730 }) {
+function SCurveChart({ history, dayNumber, actualPct, scpDays = 730 }) {
   const points = [];
   for (let d = 0; d <= scpDays + 30; d += 30) points.push(d);
   if (!points.includes(dayNumber)) points.push(dayNumber);
+  if (history) {
+    history.forEach(h => {
+      if (!points.includes(h.day_number)) points.push(h.day_number);
+    });
+  }
   points.sort((a, b) => a - b);
 
-  const data = points.map(d => ({
-    day: d,
-    planned: parseFloat(Math.min(100, (d / scpDays) * 100).toFixed(1)),
-    actual: d === dayNumber ? parseFloat(actualPct) : null,
-  }));
+  const data = points.map(d => {
+    let act = null;
+    if (d === dayNumber) act = parseFloat(actualPct);
+    else if (history) {
+      const h = history.find(h => h.day_number === d);
+      if (h) act = parseFloat(h.actual_pct);
+    }
+    return {
+      day: d,
+      planned: parseFloat(Math.min(100, (d / scpDays) * 100).toFixed(1)),
+      actual: act,
+    };
+  });
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -133,7 +146,36 @@ function AuditorPanel({ contractId }) {
           {reports.map(id => <option key={id} value={id}>{id}</option>)}
         </select>
       </div>
-      {data && <pre className="json-preview">{JSON.stringify(data, null, 2)}</pre>}
+      {data && (
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Day</th>
+                <th>Progress</th>
+                <th>Risk Score</th>
+                <th>Risk Label</th>
+                <th>Critical Events</th>
+                <th>LD Accrued (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.reporting_period}</td>
+                  <td>{r.day_number}</td>
+                  <td>{r.actual_pct}%</td>
+                  <td>{r.risk_score?.toFixed(4)}</td>
+                  <td>{getRiskBadge(r.risk_label)}</td>
+                  <td>{r.critical_events}</td>
+                  <td>{r.ld_accrued_inr?.toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -274,14 +316,19 @@ export default function AnalysisPage() {
   const [showEvents, setShowEvents] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [ruleStore, setRuleStore] = useState(null);
+  const [history, setHistory] = useState([]);
 
-  // Load rule store when contractId changes
+  // Load rule store and history when contractId changes
   useEffect(() => {
     if (!contractId) return;
     axios.get(`/api/projects/${contractId}/rule-store`)
       .then(r => setRuleStore(r.data))
       .catch(() => setRuleStore(null));
-  }, [contractId]);
+
+    axios.get(`/api/projects/${contractId}/mpr-history`)
+      .then(r => setHistory(r.data.history || []))
+      .catch(() => setHistory([]));
+  }, [contractId, result]);
 
   const runAnalysis = async (e) => {
     e.preventDefault();
@@ -411,7 +458,7 @@ export default function AnalysisPage() {
           <div className="two-col mb-3">
             <div className="card">
               <h3 className="section-title">Project S-Curve</h3>
-              <SCurveChart dayNumber={parsed.day_number} actualPct={parsed.actual_physical_pct} scpDays={scpDays} />
+              <SCurveChart history={history} dayNumber={parsed.day_number} actualPct={parsed.actual_physical_pct} scpDays={scpDays} />
               <p className="text-muted text-xs mt-1" style={{ textAlign: 'center' }}>
                 Planned: {Math.min(100, ((parsed.day_number / scpDays) * 100)).toFixed(1)}% &nbsp;|&nbsp;
                 Actual: {parsed.actual_physical_pct?.toFixed(1)}% &nbsp;|&nbsp;

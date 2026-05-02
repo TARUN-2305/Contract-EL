@@ -11,11 +11,16 @@ export const ROLES = [
 ];
 
 export function AppProvider({ children }) {
-  const [role, setRole] = useState('Project Manager');
-  const [contractId, setContractId] = useState('');
+  const [role, setRole] = useState('Contract Manager');
+  const [contractId, setContractId] = useState(() => localStorage.getItem('contractId') || '');
+
+  const updateContractId = (id) => {
+    setContractId(id);
+    localStorage.setItem('contractId', id);
+  };
 
   return (
-    <AppContext.Provider value={{ role, setRole, contractId, setContractId }}>
+    <AppContext.Provider value={{ role, setRole, contractId, setContractId: updateContractId }}>
       {children}
     </AppContext.Provider>
   );

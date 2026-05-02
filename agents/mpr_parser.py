@@ -207,7 +207,7 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
     labour_unskilled_planned = _safe_int(extract_from_table_row(doc.tables, "Planned Unskilled Labour", 1) or _kv(text, "Planned Unskilled Labour"))
     labour_unskilled_actual  = _safe_int(extract_from_table_row(doc.tables, "Actual Unskilled Labour", 1) or _kv(text, "Actual Unskilled Labour"))
     machinery_idle_days      = _safe_int(extract_from_table_row(doc.tables, "Machinery Idle", 1) or _kv(text, "Machinery Idle Days"))
-    machinery_deploy_raw     = extract_from_table_row(doc.tables, "Machinery Deployment", 1) or _kv(text, "Machinery Deployment")
+    machinery_deploy_raw     = extract_from_table_row(doc.tables, "Machinery Deployment", 1) or extract_from_table_row(doc.tables, "Machinery Deployed", 1) or _kv(text, "Machinery Deployment")
     machinery_deployment_pct = _safe_float(machinery_deploy_raw) if machinery_deploy_raw else 80.0
 
     skilled_util = ((labour_skilled_actual / labour_skilled_planned * 100) if labour_skilled_planned else 100.0)

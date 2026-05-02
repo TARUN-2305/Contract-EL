@@ -19,29 +19,34 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [trendData, setTrendData] = useState([]);
+  const [trendProjectId, setTrendProjectId] = useState('');
 
   useEffect(() => {
     axios.get('/api/projects')
-      .then(async res => {
+      .then(res => {
         const projs = res.data.projects || [];
         setProjects(projs);
-
-        // Load history of the first project for the risk trend chart
         if (projs.length > 0) {
-          try {
-            const hist = await axios.get(`/api/projects/${projs[0].id}/mpr-history`);
-            const h = hist.data.history || [];
-            setTrendData(h.map(r => ({
-              period: r.reporting_period,
-              risk: parseFloat((r.risk_score * 100).toFixed(1)),
-              actual: r.actual_pct,
-            })));
-          } catch { /* no history yet */ }
+          setTrendProjectId(projs[0].id);
         }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!trendProjectId) return;
+    axios.get(`/api/projects/${trendProjectId}/mpr-history`)
+      .then(hist => {
+        const h = hist.data.history || [];
+        setTrendData(h.map(r => ({
+          period: r.reporting_period,
+          risk: parseFloat((r.risk_score * 100).toFixed(1)),
+          actual: r.actual_pct,
+        })));
+      })
+      .catch(console.error);
+  }, [trendProjectId]);
 
   if (loading) return <div className="pulse" style={{ padding: '2rem' }}>Loading Dashboard...</div>;
 
@@ -93,7 +98,19 @@ export default function Dashboard() {
       <div className="two-col">
         {/* Risk Trend */}
         <div className="card">
-          <h3 className="section-title">Risk Trend Analysis</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 className="section-title" style={{ margin: 0 }}>Risk Trend Analysis</h3>
+            {projects.length > 0 && (
+              <select
+                className="input"
+                style={{ width: '200px', padding: '0.4rem', fontSize: '0.875rem' }}
+                value={trendProjectId}
+                onChange={(e) => setTrendProjectId(e.target.value)}
+              >
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}
+              </select>
+            )}
+          </div>
           {trendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={trendData}>

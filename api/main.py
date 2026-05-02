@@ -72,6 +72,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.middleware("http")
+async def verify_api_key(request: Request, call_next):
+    # Exclude OPTIONS and /healthz, /api/docs from auth
+    if request.method == "OPTIONS" or request.url.path in ["/healthz", "/docs", "/openapi.json"]:
+        return await call_next(request)
+    
+    api_key_header = request.headers.get("X-API-Key")
+    expected_key = os.environ.get("API_KEY_HEADER", "dev-secret-key")
+    
+    if os.environ.get("REQUIRE_API_KEY", "false").lower() == "true":
+        if api_key_header != expected_key:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing API Key"})
+            
+    return await call_next(request)
+
 from agents.eot_agent import EoTAgent
 eot_agent = EoTAgent()
 
@@ -418,6 +436,13 @@ async def upload_mpr(
     """
     # Read uploaded file
     content_bytes = await file.read()
+    
+    if len(content_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+        
+    if not file.filename.lower().endswith((".md", ".docx")):
+        raise HTTPException(status_code=415, detail="Unsupported file format. Only .md and .docx are allowed.")
+        
     # NOTE: bypass_date_check=True allows synthetic/demo documents that are dated in the future
     # to be uploaded. In production this should be False.
     bypass_date_check = True
@@ -463,22 +488,29 @@ async def upload_mpr(
 
     # Run full analysis pipeline
     try:
-        # Compliance
-        compliance_result = compliance_agent.run(exec_data)
-
-        # Risk
-        prediction = risk_predictor.predict(exec_data, rule_store)
-        import dataclasses
-        risk_dict = dataclasses.asdict(prediction)
-
-        # Explainer
-        outputs = explainer_agent.explain(
-            compliance_report=compliance_result,
-            risk_prediction=risk_dict,
-            rule_store=rule_store,
-            exec_data=exec_data,
-            audience=audience,
-        )
+        from agents.pipeline_graph import pipeline_app
+        
+        state = {
+            "trigger_type": "mpr_upload",
+            "project_id": contract_id,
+            "event_data": exec_data,
+            "project_state": {"audience": audience},
+            "rule_store": rule_store,
+            "messages": []
+        }
+        
+        result_state = pipeline_app.invoke(state)
+        
+        compliance_result = result_state.get("compliance_report", {})
+        risk_dict = result_state.get("risk_prediction", {})
+        outputs = result_state.get("explainer_outputs", {})
+        
+        class DummyPrediction: pass
+        prediction = DummyPrediction()
+        prediction.risk_score = risk_dict.get("risk_score", 0.0)
+        prediction.risk_label = risk_dict.get("risk_label", "UNKNOWN")
+        prediction.time_to_default_estimate_days = risk_dict.get("time_to_default_estimate_days")
+        prediction.top_risk_factors = risk_dict.get("top_risk_factors", [])
 
         try:
             from db.database import SessionLocal
@@ -576,7 +608,75 @@ def serve_report(filename: str):
             return FileResponse(path, media_type=media, filename=filename)
     raise HTTPException(status_code=404, detail=f"Report '{filename}' not found")
 
+@app.get("/api/escalations")
+def get_escalations(db: Session = Depends(get_db)):
+    """Fetch all escalations from db."""
+    rows = db.query(models.EscalationEvent).order_by(models.EscalationEvent.id.desc()).all()
+    return {"escalations": [
+        {
+            "id": r.id,
+            "event_id": r.event_id,
+            "project_id": r.project_id,
+            "current_tier": r.current_tier,
+            "tier_entered_date": r.tier_entered_date,
+            "tier_deadline": r.tier_deadline,
+            "responsible_party": r.responsible_party,
+            "next_action": r.next_action,
+            "clause": r.clause,
+            "is_final": r.is_final,
+        } for r in rows
+    ]}
+
+@app.get("/api/reports/list")
+def list_reports():
+    """List all available report files."""
+    reports = []
+    for subdir in ["reports", "risk", "compliance"]:
+        path = os.path.join("data", subdir)
+        if os.path.exists(path):
+            for file in os.listdir(path):
+                if file.endswith((".pdf", ".json", ".md")):
+                    stat = os.stat(os.path.join(path, file))
+                    reports.append({
+                        "filename": file,
+                        "type": subdir,
+                        "size": stat.st_size,
+                        "created_at": stat.st_ctime
+                    })
+    reports.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"reports": reports}
+
+
+from sqlalchemy import text
 
 @app.get("/healthz")
-def health():
-    return {"status": "ok", "groq_keys_loaded": True}
+def health(db: Session = Depends(get_db)):
+    from utils.groq_client import _KEYS
+    db_ok = True
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "groq_keys_loaded": len(_KEYS),
+        "db_connected": db_ok,
+        "weather_source": os.environ.get("WEATHER_SOURCE", "open_meteo"),
+        "news_source": "gnews" if os.environ.get("GNEWS_API_KEY") else "synthetic",
+    }
+
+@app.post("/admin/weather-override")
+def override_weather(payload: Dict[str, Any]):
+    """Runtime override for weather data."""
+    if "source" in payload:
+        os.environ["WEATHER_SOURCE"] = payload["source"]
+    if "manual_data" in payload:
+        os.environ["WEATHER_MANUAL_DATA"] = json.dumps(payload["manual_data"])
+    return {"message": "Weather override applied", "source": os.environ.get("WEATHER_SOURCE")}
+
+@app.post("/admin/news-override")
+def override_news(payload: Dict[str, Any]):
+    """Runtime override for news data."""
+    if "manual_articles" in payload:
+        os.environ["NEWS_MANUAL_DATA"] = json.dumps(payload["manual_articles"])
+    return {"message": "News override applied"}

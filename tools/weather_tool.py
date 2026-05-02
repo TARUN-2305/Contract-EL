@@ -91,6 +91,7 @@ class WeatherTool:
     def _generate_synthetic_weather(self, location: str, days: int) -> Dict[str, Any]:
         """Generate plausible synthetic rainfall data for testing."""
         import random
+        random.seed(hash(location) % (2**32))
         # Base daily average based on typical Indian monsoon (rough proxy)
         base_rainfall_mm = 5.0
         

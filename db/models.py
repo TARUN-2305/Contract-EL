@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, JSON, DateTime
+from sqlalchemy.sql import func
 from db.database import Base
 
 class User(Base):
@@ -51,7 +52,7 @@ class MPRRecord(Base):
     
     audience = Column(String, nullable=True)
     uploaded_filename = Column(String, nullable=True)
-    created_at = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now())
 
 class RuleStore(Base):
     __tablename__ = "rule_store"

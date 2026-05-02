@@ -43,7 +43,7 @@ class NewsTool:
                 "q": query,
                 "lang": "en",
                 "max": 10,
-                "apikey": self.api_key
+                "token": self.api_key
             }
             
             response = requests.get(self.base_url, params=params)

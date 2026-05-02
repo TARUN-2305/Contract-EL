@@ -2,7 +2,8 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ShieldAlert, LayoutDashboard, FolderKanban,
-  Activity, Upload, Search, ChevronDown
+  Activity, Upload, Search, ChevronDown,
+  Briefcase, History, FileText, Settings
 } from 'lucide-react';
 import { useApp, ROLES } from '../context/AppContext';
 
@@ -67,7 +68,7 @@ export default function Sidebar() {
           <FolderKanban size={18} /> Projects
         </Link>
         <Link to="/history" className={`nav-link ${isActive('/history') ? 'active' : ''}`}>
-          <Activity size={18} /> MPR History
+          <History size={18} /> MPR History
         </Link>
 
         <div className="sidebar-divider" />
@@ -78,6 +79,19 @@ export default function Sidebar() {
         </Link>
         <Link to="/analysis" className={`nav-link ${isActive('/analysis') ? 'active' : ''}`}>
           <Search size={18} /> MPR Analysis
+        </Link>
+        
+        <div className="sidebar-divider" />
+        <span className="sidebar-section-label">Oversight</span>
+
+        <Link to="/escalations" className={`nav-link ${isActive('/escalations') ? 'active' : ''}`}>
+          <ShieldAlert size={18} /> Escalations
+        </Link>
+        <Link to="/reports" className={`nav-link ${isActive('/reports') ? 'active' : ''}`}>
+          <FileText size={18} /> Reports
+        </Link>
+        <Link to="/admin" className={`nav-link ${isActive('/admin') ? 'active' : ''}`}>
+          <Settings size={18} /> Admin Overrides
         </Link>
       </nav>
     </aside>
