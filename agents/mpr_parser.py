@@ -406,7 +406,7 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: 
     labour_unskilled_planned = _kv(text, "Planned Unskilled Labour", int)
     labour_unskilled_actual  = _kv(text, "Actual Unskilled Labour", int)
     machinery_idle_days      = _kv(text, "Machinery Idle Days", int) or 0
-    machinery_deploy_raw     = _kv(text, "Machinery Deployment")
+    machinery_deploy_raw     = _kv(text, "Machinery Deployment") or _kv(text, "Machinery Deployed")
     machinery_deployment_pct = _safe_float(machinery_deploy_raw) if machinery_deploy_raw else 80.0
 
     # Utilisation percentages

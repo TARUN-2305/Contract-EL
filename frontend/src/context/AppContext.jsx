@@ -11,7 +11,7 @@ export const ROLES = [
 ];
 
 export function AppProvider({ children }) {
-  const [role, setRole] = useState('Contract Manager');
+  const [role, setRole] = useState(() => localStorage.getItem('role') || 'Contract Manager');
   const [contractId, setContractId] = useState(() => localStorage.getItem('contractId') || '');
 
   const updateContractId = (id) => {
@@ -19,8 +19,13 @@ export function AppProvider({ children }) {
     localStorage.setItem('contractId', id);
   };
 
+  const updateRole = (r) => {
+    setRole(r);
+    localStorage.setItem('role', r);
+  };
+
   return (
-    <AppContext.Provider value={{ role, setRole, contractId, setContractId: updateContractId }}>
+    <AppContext.Provider value={{ role, setRole: updateRole, contractId, setContractId: updateContractId }}>
       {children}
     </AppContext.Provider>
   );

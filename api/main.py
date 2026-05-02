@@ -244,13 +244,19 @@ async def upload_contract(
     contract_id = contract_id.replace("/", "_").replace("\\", "_")
     print(f"[API] Uploading contract: {contract_id} ({file.filename})")
 
+    # Validate file type and size before saving
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Contract file too large (max 50MB)")
+    if not file.filename.lower().endswith((".pdf", ".docx")):
+        raise HTTPException(status_code=415, detail="Unsupported file type. Only .pdf and .docx contracts are accepted.")
+
     # Save uploaded file
     upload_dir = "data/uploads"
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f"{contract_id}_{file.filename}")
 
     with open(file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
     print(f"[API] Saved file to {file_path}")
 
@@ -501,16 +507,14 @@ async def upload_mpr(
         
         result_state = pipeline_app.invoke(state)
         
-        compliance_result = result_state.get("compliance_report", {})
-        risk_dict = result_state.get("risk_prediction", {})
-        outputs = result_state.get("explainer_outputs", {})
-        
-        class DummyPrediction: pass
-        prediction = DummyPrediction()
-        prediction.risk_score = risk_dict.get("risk_score", 0.0)
-        prediction.risk_label = risk_dict.get("risk_label", "UNKNOWN")
-        prediction.time_to_default_estimate_days = risk_dict.get("time_to_default_estimate_days")
-        prediction.top_risk_factors = risk_dict.get("top_risk_factors", [])
+        compliance_result = result_state.get("compliance_report") or {}
+        risk_dict = result_state.get("risk_prediction") or {}
+        outputs = result_state.get("explainer_outputs") or {}
+
+        risk_score = risk_dict.get("risk_score", 0.0)
+        risk_label = risk_dict.get("risk_label", "UNKNOWN")
+        risk_ttd = risk_dict.get("time_to_default_estimate_days")
+        risk_factors = risk_dict.get("top_risk_factors", [])
 
         try:
             from db.database import SessionLocal
@@ -524,8 +528,8 @@ async def upload_mpr(
                 day_number=exec_data.get("day_number"),
                 actual_physical_pct=exec_data.get("actual_physical_pct"),
                 planned_physical_pct=exec_data.get("planned_physical_pct"),
-                risk_score=prediction.risk_score,
-                risk_label=prediction.risk_label,
+                risk_score=risk_score,
+                risk_label=risk_label,
                 total_ld_accrued_inr=compliance_result.get("total_ld_accrued_inr", 0),
                 critical_event_count=compliance_result.get("critical_count", 0),
                 high_event_count=compliance_result.get("high_count", 0),
@@ -544,8 +548,8 @@ async def upload_mpr(
                 proj.day_number = exec_data.get("day_number", proj.day_number)
                 proj.last_actual_pct = exec_data.get("actual_physical_pct")
                 proj.last_reporting_period = exec_data.get("reporting_period")
-                proj.last_risk_score = prediction.risk_score
-                proj.last_risk_label = prediction.risk_label
+                proj.last_risk_score = risk_score
+                proj.last_risk_label = risk_label
                 proj.last_ld_accrued_inr = compliance_result.get("total_ld_accrued_inr", 0)
             db_session.commit()
             db_session.close()
@@ -580,10 +584,10 @@ async def upload_mpr(
                 "total_ld_accrued_inr": compliance_result.get("total_ld_accrued_inr", 0),
             },
             "risk": {
-                "score": prediction.risk_score,
-                "label": prediction.risk_label,
-                "ttd_days": prediction.time_to_default_estimate_days,
-                "top_factors": prediction.top_risk_factors,
+                "score": risk_score,
+                "label": risk_label,
+                "ttd_days": risk_ttd,
+                "top_factors": risk_factors,
             },
             "reports": {
                 "compliance_md": outputs.get("compliance_md_path"),
@@ -608,7 +612,7 @@ def serve_report(filename: str):
             return FileResponse(path, media_type=media, filename=filename)
     raise HTTPException(status_code=404, detail=f"Report '{filename}' not found")
 
-@app.get("/api/escalations")
+@app.get("/escalations")
 def get_escalations(db: Session = Depends(get_db)):
     """Fetch all escalations from db."""
     rows = db.query(models.EscalationEvent).order_by(models.EscalationEvent.id.desc()).all()
@@ -627,7 +631,7 @@ def get_escalations(db: Session = Depends(get_db)):
         } for r in rows
     ]}
 
-@app.get("/api/reports/list")
+@app.get("/reports/list")
 def list_reports():
     """List all available report files."""
     reports = []

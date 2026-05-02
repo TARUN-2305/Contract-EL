@@ -33,6 +33,14 @@ class NewsTool:
             except Exception as e:
                 print(f"[NewsTool] Failed to read override file: {e}")
 
+        manual_data = os.environ.get("NEWS_MANUAL_DATA")
+        if manual_data:
+            try:
+                articles = json.loads(manual_data)
+                return self._analyze_articles(articles)
+            except Exception as e:
+                print(f"[NewsTool] NEWS_MANUAL_DATA parse error: {e}")
+
         if not self.api_key:
             return self._generate_synthetic_news(entity_name)
             
