@@ -399,10 +399,15 @@ class ParserAgent:
                         try:
                             # Using the query defined in EXTRACTION_PLAN
                             query = next((p["query"] for p in EXTRACTION_PLAN if p["target"] == target), target)
-                            results = self.vector_store.search(db, contract_id, query, top_k=3)
+                            
+                            # MUST encode query before search
+                            model = get_embed_model()
+                            query_embedding = model.encode(query).tolist()
+                            
+                            results = self.vector_store.search(db, contract_id, query_embedding, top_k=3)
                             
                             # Combine chunk text, limiting to ~6000 chars
-                            context_text = "\n\n".join([r["text"] for r in results])[:6000]
+                            context_text = "\n\n".join([r["chunk_text"] for r in results])[:6000]
                         finally:
                             db.close()
                             
