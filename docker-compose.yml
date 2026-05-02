@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: helloPeter@2005
+      POSTGRES_DB: contractguardv2
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:helloPeter%402005@db:5432/contractguardv2
+      - KEY1=${KEY1}
+      - KEY2=${KEY2}
+      - KEY3=${KEY3}
+      - KEY4=${KEY4}
+      - WEATHER_SOURCE=open_meteo
+      - GNEWS_API_KEY=${GNEWS_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

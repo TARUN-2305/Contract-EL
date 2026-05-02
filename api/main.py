@@ -2,6 +2,8 @@ import os
 import json
 import shutil
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
@@ -62,6 +64,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ContractGuard AI API", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from agents.eot_agent import EoTAgent
 eot_agent = EoTAgent()
 
@@ -112,6 +122,53 @@ class TriggerRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"message": "ContractGuard AI API is running"}
+
+@app.get("/projects")
+def list_projects(db: Session = Depends(get_db)):
+    projects = db.query(models.Project).all()
+    return {"projects": [
+        {
+            "id": p.id,
+            "name": p.name,
+            "contract_type": p.contract_type,
+            "contract_value_inr": p.contract_value_inr,
+            "contractor_name": p.contractor_name,
+            "last_reporting_period": p.last_reporting_period,
+            "last_actual_pct": p.last_actual_pct,
+            "last_risk_score": p.last_risk_score,
+            "last_risk_label": p.last_risk_label,
+            "last_ld_accrued_inr": p.last_ld_accrued_inr
+        } for p in projects
+    ]}
+
+@app.get("/projects/{project_id}/mpr-history")
+def get_mpr_history(project_id: str, db: Session = Depends(get_db)):
+    records = db.query(models.MPRRecord).filter(models.MPRRecord.project_id == project_id).order_by(models.MPRRecord.day_number.asc()).all()
+    return {"history": [
+        {
+            "id": r.id,
+            "reporting_period": r.reporting_period,
+            "day_number": r.day_number,
+            "actual_pct": r.actual_physical_pct,
+            "planned_pct": r.planned_physical_pct,
+            "risk_score": r.risk_score,
+            "risk_label": r.risk_label,
+            "critical_events": r.critical_event_count,
+            "ld_accrued_inr": r.total_ld_accrued_inr
+        } for r in records
+    ]}
+
+@app.get("/projects/{project_id}/rule-store")
+def get_rule_store(project_id: str, db: Session = Depends(get_db)):
+    rule_store_path = os.path.join("data", "rule_store", f"rule_store_{project_id}.json")
+    if os.path.exists(rule_store_path):
+        with open(rule_store_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # fallback to DB
+    row = db.query(models.RuleStore).filter(models.RuleStore.project_id == project_id).order_by(models.RuleStore.id.desc()).first()
+    if row:
+        return row.rules
+    raise HTTPException(status_code=404, detail="Rule store not found")
 
 
 @app.post("/trigger")
@@ -402,20 +459,7 @@ async def upload_mpr(
     
     exec_data["appointed_date"] = rule_store.get("appointed_date")
 
-    # Update project day_number and last_actual_pct in DB:
-    try:
-        from db.database import SessionLocal
-        from db import models
-        db_session = SessionLocal()
-        proj = db_session.query(models.Project).filter(models.Project.id == contract_id).first()
-        if proj:
-            proj.day_number = exec_data.get("day_number", proj.day_number)
-            proj.last_actual_pct = exec_data.get("actual_physical_pct", proj.last_actual_pct)
-            proj.last_reporting_period = exec_data.get("reporting_period")
-            db_session.commit()
-        db_session.close()
-    except Exception as e:
-        print(f"[API] Error updating project state in DB: {e}")
+    # Remove the early project update DB logic as it will be done after processing
 
     # Run full analysis pipeline
     try:
@@ -435,6 +479,46 @@ async def upload_mpr(
             exec_data=exec_data,
             audience=audience,
         )
+
+        try:
+            from db.database import SessionLocal
+            from db import models
+            db_session = SessionLocal()
+            
+            # Create MPRRecord
+            mpr_rec = models.MPRRecord(
+                project_id=contract_id,
+                reporting_period=exec_data.get("reporting_period") or "unknown",
+                day_number=exec_data.get("day_number"),
+                actual_physical_pct=exec_data.get("actual_physical_pct"),
+                planned_physical_pct=exec_data.get("planned_physical_pct"),
+                risk_score=prediction.risk_score,
+                risk_label=prediction.risk_label,
+                total_ld_accrued_inr=compliance_result.get("total_ld_accrued_inr", 0),
+                critical_event_count=compliance_result.get("critical_count", 0),
+                high_event_count=compliance_result.get("high_count", 0),
+                total_event_count=compliance_result.get("total_events", 0),
+                exec_data_json=exec_data,
+                compliance_json=compliance_result,
+                risk_json=risk_dict,
+                audience=audience,
+                uploaded_filename=file.filename,
+            )
+            db_session.add(mpr_rec)
+            
+            # Update project last state
+            proj = db_session.query(models.Project).filter(models.Project.id == contract_id).first()
+            if proj:
+                proj.day_number = exec_data.get("day_number", proj.day_number)
+                proj.last_actual_pct = exec_data.get("actual_physical_pct")
+                proj.last_reporting_period = exec_data.get("reporting_period")
+                proj.last_risk_score = prediction.risk_score
+                proj.last_risk_label = prediction.risk_label
+                proj.last_ld_accrued_inr = compliance_result.get("total_ld_accrued_inr", 0)
+            db_session.commit()
+            db_session.close()
+        except Exception as e:
+            print(f"[API] MPR history persist failed: {e}")  # non-fatal
 
         return {
             "status": "success",
@@ -479,6 +563,18 @@ async def upload_mpr(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed after MPR parse: {str(e)}")
+
+
+@app.get("/reports/{filename}")
+def serve_report(filename: str):
+    """Serve generated compliance/risk report files for download."""
+    for subdir in ["reports", "risk", "compliance"]:
+        path = os.path.join("data", subdir, filename)
+        if os.path.exists(path):
+            media = "application/pdf" if filename.endswith(".pdf") else \
+                    "application/json" if filename.endswith(".json") else "text/markdown"
+            return FileResponse(path, media_type=media, filename=filename)
+    raise HTTPException(status_code=404, detail=f"Report '{filename}' not found")
 
 
 @app.get("/healthz")

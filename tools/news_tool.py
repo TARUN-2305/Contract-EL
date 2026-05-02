@@ -1,16 +1,18 @@
 """
 News Tool — tools/news_tool.py
-Fetches latest news for a specific entity (Contractor) using NewsAPI to detect early warning signals (insolvency, fraud, etc.).
+Fetches latest news for a specific entity (Contractor) using GNews to detect early warning signals.
 """
 import os
+import json
 import requests
 from datetime import date, timedelta
 from typing import Dict, Any, List
 
 class NewsTool:
     def __init__(self):
-        self.api_key = os.environ.get("NEWSAPI_KEY")
-        self.base_url = "https://newsapi.org/v2/everything"
+        self.api_key = os.environ.get("GNEWS_API_KEY")
+        self.override_file = os.environ.get("NEWS_OVERRIDE_FILE")
+        self.base_url = "https://gnews.io/api/v4/search"
         
         # Risk keywords for the Indian construction sector
         self.risk_keywords = [
@@ -24,21 +26,24 @@ class NewsTool:
         Fetch recent news for an entity and flag risk signals.
         If no API key is provided, returns synthetic data for testing.
         """
-        from_date = str(date.today() - timedelta(days=days_back))
-        
+        if self.override_file and os.path.exists(self.override_file):
+            try:
+                with open(self.override_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[NewsTool] Failed to read override file: {e}")
+
         if not self.api_key:
             return self._generate_synthetic_news(entity_name)
             
         try:
-            # We add risk keywords to narrow the search to relevant adverse news
-            query = f'"{entity_name}" AND ({" OR ".join(self.risk_keywords)})'
+            query = f'"{entity_name}"'
             
             params = {
                 "q": query,
-                "from": from_date,
-                "sortBy": "relevancy",
-                "language": "en",
-                "apiKey": self.api_key
+                "lang": "en",
+                "max": 10,
+                "apikey": self.api_key
             }
             
             response = requests.get(self.base_url, params=params)
@@ -47,7 +52,7 @@ class NewsTool:
                 data = response.json()
                 return self._analyze_articles(data.get("articles", []))
             else:
-                return {"error": f"NewsAPI error: {response.status_code} - {response.text}"}
+                return {"error": f"GNews error: {response.status_code} - {response.text}"}
                 
         except Exception as e:
             return {"error": f"News fetch error: {str(e)}"}
@@ -77,7 +82,7 @@ class NewsTool:
             "adverse_signals_found": len(risk_signals),
             "risk_score": round(score, 2),
             "signals": risk_signals,
-            "source": "newsapi"
+            "source": "gnews"
         }
 
     def _generate_synthetic_news(self, entity_name: str) -> Dict[str, Any]:

@@ -126,7 +126,12 @@ def extract_performance_security(text: str) -> dict:
 def extract_force_majeure(text: str) -> dict:
     contents = re.findall(r"\(([a-e])\)\s+([^\n(]+)", text)
     return {
-        "notice_deadline_days": _int(_find(r"within\s+(\d+)\s+(?:seven\s+)?\(?seven\)?\s*days\s+of\s+becoming\s+aware|within\s+(\d+)\s+days\s+of\s+becoming", text)),
+        "notice_deadline_days": (
+            _int(_find(r"within\s+(\d+)\s+days\s+of\s+becoming\s+aware", text))
+            or _int(_find(r"within\s+seven\s+\(7\)\s+days", text))
+            or _int(_find(r"within\s+(\d+)\s+days\s+of\s+(?:the\s+)?occurrence", text))
+            or 7  # NITI Aayog Article 19.1 default
+        ),
         "notice_recipient": _find(r"addressed\s+to\s+(?:the\s+)?(.+?)(?:\.|and)", text),
         "required_notice_contents": [c[1].strip() for c in contents] if contents else ["description", "impact", "duration", "mitigation"],
         "ongoing_reporting_frequency": "weekly" if re.search(r"weekly", text, re.IGNORECASE) else None,

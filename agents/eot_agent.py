@@ -305,7 +305,7 @@ class EoTAgent:
         revised = compute_revised_milestones(rule_store, approved)
 
         decision = "APPROVED" if approved == claimed_days else "PARTIALLY_APPROVED"
-        reason = None if decision == "APPROVED" else f"Overlap deduction of {overlap} days applied. Net approved: {approved} days."
+        reason = None if decision == "APPROVED" else f"Overlap deduction of {overlap_days} days applied. Net approved: {approved} days."
 
         return EoTDecision(
             decision_id=f"EOT-{uuid.uuid4().hex[:8].upper()}",

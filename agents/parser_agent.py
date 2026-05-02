@@ -409,9 +409,12 @@ class ParserAgent:
                         if not context_text:
                             continue
                             
-                        # 2. Query LLM
-                        system_prompt = "You are a legal contract parsing assistant. Extract the required missing data fields from the contract text."
-                        user_prompt = f"Contract Text:\n{context_text}\n\nMissing Field to extract: {target}\n\nReturn ONLY a JSON dictionary where the key is '{target}' and the value is the extracted data matching the required schema. If not found, return null for the value."
+                        # 2. Query LLM using EXTRACTION_PROMPTS
+                        prompt_template = EXTRACTION_PROMPTS.get(target, DEFAULT_EXTRACTION_PROMPT)
+                        formatted_prompt = prompt_template.format(target=target, context=context_text)
+
+                        system_prompt = "You are a legal extraction engine. Return ONLY valid JSON."
+                        user_prompt = f"{formatted_prompt}\n\nCRITICAL: You MUST wrap your final JSON output inside an object with the key '{target}'. Example: {{\"{target}\": <your extracted JSON>}}"
                         
                         response = client.chat.completions.create(
                             model="llama-3.3-70b-versatile",
@@ -427,10 +430,15 @@ class ParserAgent:
                         val = llm_result.get(target)
                         
                         if val is not None:
+                            # Post-extraction validation
+                            warnings = validate_extracted(target, val)
                             extracted[target] = val
-                            audit_log[target] = {"method": "groq_llm_fallback", "warnings": []}
+                            audit_log[target] = {"method": "groq_llm_fallback", "warnings": warnings}
                             del unresolved[target]
-                            print(f"[ParserAgent] Fallback successful for {target}")
+                            if warnings:
+                                print(f"[ParserAgent] Fallback successful but with warnings for {target}: {warnings}")
+                            else:
+                                print(f"[ParserAgent] Fallback successful for {target}")
                         else:
                             print(f"[ParserAgent] Fallback failed for {target} (returned null)")
                 else:

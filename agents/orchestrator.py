@@ -7,7 +7,8 @@ import json
 from pydantic import BaseModel
 from typing import Dict, Any, List
 
-# ── Groq (primary) ──────────────────────────────────────────────────────
+from langgraph.graph import StateGraph, END
+from agents.graph_state import ContractGuardState
 from utils.groq_client import groq_chat
 
 # ── Ollama (commented out — local fallback, requires gemma4:e2b + RAM) ──
@@ -65,12 +66,46 @@ class OrchestratorResponse(BaseModel):
 
 class OrchestratorAgent:
     def __init__(self, model_name: str = "llama-3.3-70b-versatile"):
-        # model_name kept as param for compatibility; Groq model used by default
         self.model_name = model_name
+        self.graph = self._build_graph()
 
-    def process_trigger(self, trigger_type: str, project_state: Dict[str, Any]) -> Dict[str, Any]:
-        print(f"[Orchestrator] Received trigger: {trigger_type} for project {project_state.get('project_id')}")
+    def _build_graph(self):
+        workflow = StateGraph(ContractGuardState)
+        
+        workflow.add_node("parse", self.node_parse)
+        workflow.add_node("validate", self.node_validate)
+        workflow.add_node("route", self.node_route)
+        workflow.add_node("respond", self.node_respond)
+        
+        workflow.set_entry_point("parse")
+        workflow.add_edge("parse", "validate")
+        workflow.add_edge("validate", "route")
+        workflow.add_edge("route", "respond")
+        workflow.add_edge("respond", END)
+        
+        return workflow.compile()
 
+    def node_parse(self, state: ContractGuardState) -> Dict[str, Any]:
+        """Parse incoming trigger and log it."""
+        print(f"[Orchestrator] Parse node: trigger {state['trigger_type']}")
+        return {"messages": [f"Parsed trigger {state['trigger_type']}"]}
+
+    def node_validate(self, state: ContractGuardState) -> Dict[str, Any]:
+        """Validate the project state and trigger data."""
+        print(f"[Orchestrator] Validate node for project {state['project_id']}")
+        if not state['project_id']:
+            return {"status": "error", "messages": ["Validation failed: missing project_id"]}
+        return {"messages": ["Validation passed"]}
+
+    def node_route(self, state: ContractGuardState) -> Dict[str, Any]:
+        """Use LLM to decide routing strategy."""
+        if state.get("status") == "error":
+            return {} # Skip LLM if validation failed
+
+        print(f"[Orchestrator] Route node: calling LLM for routing")
+        project_state = state["project_state"]
+        trigger_type = state["trigger_type"]
+        
         system_prompt = ORCHESTRATOR_SYSTEM_PROMPT.format(
             contract_type=project_state.get("contract_type", "EPC"),
             project_name=project_state.get("project_name", "Unknown"),
@@ -97,52 +132,31 @@ Project State Summary:
 Provide routing decision as JSON with keys:
   "agents_to_invoke": [list of agent names in order],
   "reasoning": "why you chose this sequence",
-  "context_packets": {{agent_name: relevant_context_dict}}
+  "context_packets": {{"agent_name": relevant_context_dict}}
 """
-
         try:
-            print(f"[Orchestrator] Calling Groq: {self.model_name}")
-
-            # ── Groq call ──────────────────────────────────────────────
             raw = groq_chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                model="llama-3.3-70b-versatile",
+                model=self.model_name,
                 temperature=0.0,
                 max_tokens=1024,
             )
-
-            # ── Ollama fallback (comment in if Groq unavailable) ────────
-            # response = _ollama_client.chat(
-            #     model="gemma4:e2b",
-            #     messages=[
-            #         {"role": "system", "content": system_prompt},
-            #         {"role": "user", "content": user_prompt},
-            #     ],
-            #     format="json",
-            # )
-            # raw = response["message"]["content"]
-
-            # Parse JSON — strip markdown fences if present
             content = raw.strip()
             if content.startswith("```"):
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
             result_json = json.loads(content)
-
-            print(f"[Orchestrator] Decision: {result_json.get('agents_to_invoke')}")
             return {
-                "status": "success",
-                "trigger": trigger_type,
-                "orchestrator_decision": result_json,
+                "agents_to_invoke": result_json.get("agents_to_invoke", []),
+                "context_packets": result_json.get("context_packets", {}),
+                "messages": [f"Routing decided: {result_json.get('agents_to_invoke')}"]
             }
-
         except Exception as e:
-            print(f"[Orchestrator] Error: {e} — using default routing for {trigger_type}")
-            # Deterministic fallback routing when LLM fails
+            print(f"[Orchestrator] LLM routing failed: {e}")
             default_routes = {
                 "MPR_UPLOADED":           ["Compliance Agent", "Risk Agent", "Explanation Agent"],
                 "FM_CLAIM_SUBMITTED":     ["EoT Agent", "Compliance Agent", "Explanation Agent"],
@@ -152,11 +166,53 @@ Provide routing decision as JSON with keys:
                 "LD_CAP_WARNING":         ["Escalation Agent", "Explanation Agent"],
             }
             return {
-                "status": "fallback",
-                "trigger": trigger_type,
-                "orchestrator_decision": {
-                    "agents_to_invoke": default_routes.get(trigger_type, ["Compliance Agent", "Explanation Agent"]),
-                    "reasoning": f"LLM unavailable ({e}) — using deterministic fallback routing.",
-                    "context_packets": {},
-                },
+                "agents_to_invoke": default_routes.get(trigger_type, ["Compliance Agent", "Explanation Agent"]),
+                "context_packets": {},
+                "messages": [f"LLM failed, using fallback routing: {e}"]
             }
+
+    def node_respond(self, state: ContractGuardState) -> Dict[str, Any]:
+        """Finalize the orchestrator response."""
+        if state.get("status") == "error":
+            return {}
+        print(f"[Orchestrator] Respond node: finalizing")
+        return {"status": "success"}
+
+    def process_trigger(self, trigger_type: str, project_state: Dict[str, Any]) -> Dict[str, Any]:
+        print(f"[Orchestrator] Starting LangGraph for {trigger_type} / {project_state.get('project_id')}")
+        
+        initial_state = {
+            "trigger_type": trigger_type,
+            "project_id": project_state.get("project_id", ""),
+            "event_data": project_state.get("trigger_data", {}),
+            "project_state": project_state,
+            "rule_store": project_state.get("rule_store", {}),
+            "agents_to_invoke": [],
+            "current_agent_index": 0,
+            "context_packets": {},
+            "compliance_report": None,
+            "risk_prediction": None,
+            "escalation_records": None,
+            "eot_decision": None,
+            "explainer_outputs": None,
+            "status": "started",
+            "messages": []
+        }
+        
+        final_state = self.graph.invoke(initial_state)
+        
+        if final_state.get("status") == "error":
+            return {
+                "status": "error",
+                "message": " | ".join(final_state.get("messages", []))
+            }
+            
+        return {
+            "status": final_state.get("status", "success"),
+            "trigger": trigger_type,
+            "orchestrator_decision": {
+                "agents_to_invoke": final_state.get("agents_to_invoke", []),
+                "context_packets": final_state.get("context_packets", {})
+            },
+            "messages": final_state.get("messages", [])
+        }

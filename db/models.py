@@ -13,15 +13,46 @@ class Project(Base):
     __tablename__ = "projects"
 
     id = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    contract_type = Column(String, nullable=False)  # EPC or ITEM_RATE
-    scp_days = Column(Integer, nullable=False)
-    contract_value_inr = Column(Float, nullable=False)
+    name = Column(String, index=True)
+    contract_type = Column(String)  # e.g., "EPC", "HAM", "BOT"
+    scp_days = Column(Integer)
+    contract_value_inr = Column(Float)
     day_number = Column(Integer, default=0)
     contractor_name = Column(String, nullable=True)
-    appointed_date = Column(String, nullable=True)
-    last_actual_pct = Column(Float, default=0.0)
+    
+    # Snapshot of last received MPR state (Phase 2 additions)
     last_reporting_period = Column(String, nullable=True)
+    last_actual_pct = Column(Float, nullable=True)
+    last_risk_score = Column(Float, nullable=True)
+    last_risk_label = Column(String, nullable=True)
+    last_ld_accrued_inr = Column(Float, nullable=True)
+
+
+
+class MPRRecord(Base):
+    __tablename__ = "mpr_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(String, index=True, nullable=False)
+    reporting_period = Column(String, nullable=False)  # e.g. "2025-05"
+    day_number = Column(Integer, default=0)
+    actual_physical_pct = Column(Float, default=0.0)
+    planned_physical_pct = Column(Float, default=0.0)
+    risk_score = Column(Float, nullable=True)
+    risk_label = Column(String, nullable=True)
+    total_ld_accrued_inr = Column(Float, default=0.0)
+    critical_event_count = Column(Integer, default=0)
+    high_event_count = Column(Integer, default=0)
+    total_event_count = Column(Integer, default=0)
+    
+    exec_data_json = Column(JSON, nullable=True)
+    compliance_json = Column(JSON, nullable=True)
+    risk_json = Column(JSON, nullable=True)
+    
+    audience = Column(String, nullable=True)
+    uploaded_filename = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
+
 class RuleStore(Base):
     __tablename__ = "rule_store"
 

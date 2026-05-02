@@ -1,24 +1,38 @@
 """
 Weather Tool — tools/weather_tool.py
-Fetches historical rainfall data from OpenWeatherMap to validate Force Majeure claims.
+Fetches historical rainfall data from Open-Meteo to validate Force Majeure claims.
 Calculates weather_anomaly_score.
 """
 import os
+import json
 import requests
 from datetime import date
 from typing import Optional, Dict, Any
 
 from agents.compliance_engine import _parse_date
 
+LOCATION_COORDS = {
+    "New Delhi": (28.6139, 77.2090),
+    "Mumbai": (19.0760, 72.8777),
+    "Bengaluru": (12.9716, 77.5946),
+    "Chennai": (13.0827, 80.2707),
+    "Kolkata": (22.5726, 88.3639),
+    "Karnataka, India": (15.3173, 75.7139),
+    "Karnataka": (15.3173, 75.7139),
+    "Assam": (26.2006, 92.9376),
+    "Maharashtra": (19.7515, 75.7139)
+}
+
 class WeatherTool:
     def __init__(self):
-        self.api_key = os.environ.get("OPENWEATHERMAP_API_KEY")
-        self.base_url = "https://api.openweathermap.org/data/2.5/history/city" # Mock URL for historical
+        self.source = os.environ.get("WEATHER_SOURCE", "open_meteo")
+        self.manual_data = os.environ.get("WEATHER_MANUAL_DATA")
+        self.base_url = "https://archive-api.open-meteo.com/v1/archive"
 
     def get_rainfall_data(self, location: str, start_date: str, end_date: str) -> Dict[str, Any]:
         """
-        Fetch rainfall data for the specified location and date range.
-        If no API key is provided, returns synthetic data for testing.
+        Fetch historical rainfall data using Open-Meteo.
+        Supports manual JSON overrides and synthetic fallback.
         """
         start = _parse_date(start_date)
         end = _parse_date(end_date)
@@ -27,31 +41,52 @@ class WeatherTool:
             return {"error": "Invalid date format. Use YYYY-MM-DD"}
             
         days = max(1, (end - start).days)
-        
-        # Synthetic data generator for testing/fallback
-        if not self.api_key:
+
+        if self.source == "manual" and self.manual_data:
+            try:
+                data = json.loads(self.manual_data)
+                return data
+            except json.JSONDecodeError:
+                pass
+                
+        if self.source == "synthetic":
             return self._generate_synthetic_weather(location, days)
-            
-        # Actual API call (mocked structure)
-        # Note: True historical data usually requires paid OWM tier.
+
+        # Open-Meteo historical fetch
+        lat, lon = LOCATION_COORDS.get(location, (28.6139, 77.2090)) # Default New Delhi
         try:
-            # Assuming params for a mock historical endpoint
             params = {
-                "q": location,
-                "type": "hour",
-                "start": int(start.timestamp()),
-                "end": int(end.timestamp()),
-                "appid": self.api_key
+                "latitude": lat,
+                "longitude": lon,
+                "start_date": start_date,
+                "end_date": end_date,
+                "daily": "precipitation_sum",
+                "timezone": "auto"
             }
-            # response = requests.get(self.base_url, params=params)
-            # response.raise_for_status()
-            # return response.json()
+            response = requests.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
             
-            # Since we can't reliably call historical without paid key, default to synthetic
-            return self._generate_synthetic_weather(location, days)
+            daily_precip = data.get("daily", {}).get("precipitation_sum", [])
+            valid_precip = [p for p in daily_precip if p is not None]
             
+            total_rainfall = sum(valid_precip)
+            extreme_days = sum(1 for p in valid_precip if p > 50.0) # > 50mm considered extreme
+            
+            # Historical avg for the same period (rough proxy)
+            base_rainfall_mm = 5.0
+            
+            return {
+                "location": location,
+                "period_days": days,
+                "total_rainfall_mm": round(total_rainfall, 2),
+                "extreme_rainfall_days": extreme_days,
+                "historical_average_mm": round(base_rainfall_mm * days, 2),
+                "source": "open_meteo_archive"
+            }
         except Exception as e:
-            return {"error": f"Weather API error: {str(e)}"}
+            print(f"[WeatherTool] API failed: {e}. Falling back to synthetic.")
+            return self._generate_synthetic_weather(location, days)
 
     def _generate_synthetic_weather(self, location: str, days: int) -> Dict[str, Any]:
         """Generate plausible synthetic rainfall data for testing."""
@@ -127,8 +162,8 @@ if __name__ == "__main__":
     claim = {
         "event_id": "FM-001",
         "location": "Mumbai",
-        "event_date": "2025-07-15",
-        "date_ended": "2025-07-20",
+        "event_date": "2023-07-15",
+        "date_ended": "2023-07-20",
         "claimed_days": 5
     }
     

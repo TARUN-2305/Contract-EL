@@ -49,8 +49,8 @@ def _kv(text: str, label: str, cast=str) -> Optional[Any]:
 
 def _table(text: str, section_header: str) -> list[dict]:
     """Parse a markdown table under a given section header. Returns list of row dicts."""
-    # Find the section
-    section_pattern = rf"##\s*Section.*?{re.escape(section_header)}.*?\n(.*?)(?=\n##|\Z)"
+    # Find the section (make 'Section' optional to support various markdown formats)
+    section_pattern = rf"##\s*(?:Section\s*[\dA-Za-z\.\-]*\s*[—\-:]?\s*)?{re.escape(section_header)}.*?\n(.*?)(?=\n##|\Z)"
     sm = re.search(section_pattern, text, re.IGNORECASE | re.DOTALL)
     if not sm:
         return []
@@ -207,6 +207,8 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
     labour_unskilled_planned = _safe_int(extract_from_table_row(doc.tables, "Planned Unskilled Labour", 1) or _kv(text, "Planned Unskilled Labour"))
     labour_unskilled_actual  = _safe_int(extract_from_table_row(doc.tables, "Actual Unskilled Labour", 1) or _kv(text, "Actual Unskilled Labour"))
     machinery_idle_days      = _safe_int(extract_from_table_row(doc.tables, "Machinery Idle", 1) or _kv(text, "Machinery Idle Days"))
+    machinery_deploy_raw     = extract_from_table_row(doc.tables, "Machinery Deployment", 1) or _kv(text, "Machinery Deployment")
+    machinery_deployment_pct = _safe_float(machinery_deploy_raw) if machinery_deploy_raw else 80.0
 
     skilled_util = ((labour_skilled_actual / labour_skilled_planned * 100) if labour_skilled_planned else 100.0)
     unskilled_util = ((labour_unskilled_actual / labour_unskilled_planned * 100) if labour_unskilled_planned else 100.0)
@@ -307,7 +309,7 @@ def parse_mpr_docx(file_path_or_bytes, prev_actual_pct: float = 0.0, bypass_date
         "labour_unskilled_utilisation_pct":  round(unskilled_util, 1),
         "labour_deployment_pct":             round(skilled_util, 1),
         "machinery_idle_days":               machinery_idle_days,
-        "machinery_deployment_pct":          80.0,
+        "machinery_deployment_pct":          machinery_deployment_pct,
         "qa_results":               qa_results,
         "test_fail_rate_pct":       round(test_fail_rate, 2),
         "ncrs_pending":             ncrs_pending,
@@ -404,6 +406,8 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: 
     labour_unskilled_planned = _kv(text, "Planned Unskilled Labour", int)
     labour_unskilled_actual  = _kv(text, "Actual Unskilled Labour", int)
     machinery_idle_days      = _kv(text, "Machinery Idle Days", int) or 0
+    machinery_deploy_raw     = _kv(text, "Machinery Deployment")
+    machinery_deployment_pct = _safe_float(machinery_deploy_raw) if machinery_deploy_raw else 80.0
 
     # Utilisation percentages
     skilled_util = (
@@ -510,7 +514,7 @@ def parse_mpr(md_content: str, prev_actual_pct: float = 0.0, bypass_date_check: 
         "labour_unskilled_utilisation_pct":  round(unskilled_util, 1),
         "labour_deployment_pct":             round(skilled_util, 1),
         "machinery_idle_days":               machinery_idle_days,
-        "machinery_deployment_pct":          80.0,  # default if not in MPR
+        "machinery_deployment_pct":          machinery_deployment_pct,
 
         # QA
         "qa_results":               qa_results,
