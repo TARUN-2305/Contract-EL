@@ -1,0 +1,154 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: contractguard_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: contractguard
+      POSTGRES_DB: contractguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: contractguard_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Qdrant Vector DB ────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: contractguard_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: contractguard_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:contractguard@db:5432/contractguard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: http://ollama:11434
+      WEATHER_SOURCE: open_meteo
+      KEY1: ${KEY1:-}
+      KEY2: ${KEY2:-}
+      KEY3: ${KEY3:-}
+      KEY4: ${KEY4:-}
+      GNEWS_API_KEY: ${GNEWS_API_KEY:-}
+      REQUIRE_API_KEY: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    command: >
+      sh -c "
+        echo 'Waiting for DB...' &&
+        python -c 'from db.database import engine; from db import models; models.Base.metadata.create_all(bind=engine); print(\"DB tables ready\")' &&
+        uvicorn api.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 300
+      "
+
+  # ── Celery Worker ───────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: contractguard_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:contractguard@db:5432/contractguard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: http://ollama:11434
+      KEY1: ${KEY1:-}
+      KEY2: ${KEY2:-}
+      KEY3: ${KEY3:-}
+      KEY4: ${KEY4:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    command: celery -A workers.celery_app worker --loglevel=info --concurrency=1 -Q celery
+
+  # ── React Frontend ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: contractguard_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  # ── Ollama (optional — local LLM fallback) ──────────────────────────────
+  # Comment out if you don't want local LLM. Models auto-pulled on first use.
+  # Requires: ~4GB RAM for gemma3:1b, ~8GB for phi3:mini
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contractguard_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull models on startup (comment out if no internet)
+    entrypoint: ["ollama", "serve"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  ollama_data:

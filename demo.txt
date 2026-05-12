@@ -1,0 +1,89 @@
+  Demonstration & Testing Strategy:
+  Designing a demonstration script using sample contracts and reports.
+
+  ✓  ReadFile  frontend\src\pages\PersonasPage.jsx
+  ✓  ReadFile  frontend\...\SystemStatusPage.jsx
+  ✓  ReadFile  frontend\...\UploadContractPage.jsx
+  ✓  ReadFile  frontend\src\pages\AnalysisPage.jsx
+
+✦ This is perfect for a full demonstration. We’ll follow a "Project
+  Lifecycle Story"—starting from a clean contract upload to a mid-project
+  crisis, and finally a "catch-up" recovery.
+
+  Here is your Demonstration Master Script. Follow these steps in order to
+  capture the most impactful screenshots:
+
+  Phase 1: Setting the "Law of the Project"
+   * Persona: Contract Manager (🏛️)
+   * Page: /upload-contract
+   * Action: Upload CONTRACT_EPC_NH44_KA03.docx
+   * What to Screenshot:
+       1. The "🤖 Auto-Fill with LLM" process (it shows the Groq→Ollama
+          chain working).
+       2. The Extracted Rule Store (the green box at the end).
+       3. The Goal: Show that the AI has "read" the contract and knows that
+          M1 is at 28%, M2 at 55%, and the LD cap is 10%.
+
+  Phase 2: The "Happy Path" (Month 3)
+   * Persona: Site Engineer (🔧)
+   * Page: /analysis
+   * Action: Upload MPR_A_ON_TRACK_Month3_Day91.docx
+   * What to Screenshot:
+       1. The Green Dashboard. Risk: LOW.
+       2. The S-Curve (if visible) showing "Actual" following "Planned".
+       3. The Goal: Show the system confirming everything is healthy.
+
+  Phase 3: The First Slippage (Month 7)
+   * Persona: Project Manager (📊)
+   * Page: /analysis
+   * Action: Upload MPR_B_AT_RISK_Month7_Day214_M1Missed.docx
+   * What to Screenshot:
+       1. The Risk Banner turning MEDIUM/HIGH.
+       2. The "Top Risk Factors" (SHAP explanation) showing
+          milestone_m1_missed as the primary driver.
+       3. The Compliance Event for "Milestone M1 Delay".
+       4. The Goal: Show how the AI detects a violation and explains why the
+          risk score jumped.
+
+  Phase 4: Validating a Crisis (Force Majeure)
+   * Persona: Contractor Representative (🏗️)
+   * Page: /analysis
+   * Action: Upload MPR_D_VALID_FM_Month5_Day152_Flood.docx
+   * What to Screenshot:
+       1. The Force Majeure event.
+       2. The Evidence Box showing the system cross-checking the flood
+          claim.
+       3. The Goal: Show the "Agentic" part of the system—how it validates
+          external claims (like weather) against contractual logic.
+
+  Phase 5: Critical Default (Month 14)
+   * Persona: Auditor (📋)
+   * Page: /analysis
+   * Action: Upload MPR_C_DEFAULTING_Month14_Day426_LDCap62pct.docx
+   * What to Screenshot:
+       1. The CRITICAL Risk Banner (Red).
+       2. The "Est. 45 days to default" warning.
+       3. The LD Accrued count (showing a large Rupee amount).
+       4. The Goal: Show the system acting as an early-warning radar for
+          project failure.
+
+  Phase 6: The "Catch-Up" Miracle (Month 22)
+   * Persona: Contract Manager (🏛️)
+   * Page: /analysis
+   * Action: Upload MPR_F_NEAR_COMPLETE_Bonus_CatchUp_Month22.docx
+   * What to Screenshot:
+       1. The "✓ Catch-up refund eligible" badge on the M4 milestone.
+       2. The Analysis Result showing prior penalties being reversed.
+       3. The Goal: This is the "Aha!" moment. It shows the system is fair
+          and follows complex legal logic (EPC Art 10.3.3) to reward the
+          contractor for finishing on time despite mid-term delays.
+
+  Final Technical "Proof"
+   * Page: /system-status
+   * Action: Refresh the status.
+   * What to Screenshot: The LLM Fallback Chain showing your local Ollama as
+     "Online" and ready.
+
+  Ready to start? I suggest beginning with Phase 1. If you run into any
+  "Unresolved" fields during the contract upload, let me know and I'll help
+  you fill the form!
